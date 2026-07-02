@@ -136,7 +136,7 @@ class TestNodeConstruction:
         node = Node("test-node")
         assert node._name == "test-node"
         assert node._port == 7878
-        assert node._version == "0.4.7"
+        assert node._version == "0.4.8"
         assert node.connected is False
         assert node.node_id is not None
         assert len(node.node_id) > 20
@@ -147,6 +147,19 @@ class TestNodeConstruction:
                     labels={"region": "br"})
         assert node._port == 9000
         assert node.tracker_visibility == "private"
+
+    @pytest.mark.asyncio
+    async def test_send_task_to_offline_target_returns_error(self):
+        """send_task with offline target_node must return error, not route to tracker."""
+        node = Node("test-a", port=0)
+        await node.connect()
+        await node.register(agents=["echo"])
+
+        # Target node_id that won't match any connected peer address
+        result = await node.send_task("nonexistent-node-id-42", "echo", {"msg": "hello"})
+
+        assert result.status == "error"
+        await node.disconnect()
 
 
 # ── TestNodeLifecycle ──────────────────────────────────────

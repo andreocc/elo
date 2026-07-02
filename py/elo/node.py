@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.7",
+        version: str = "0.4.8",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -247,17 +247,17 @@ class Node:
                 if addr.startswith(target_node[:12] + "@"):
                     peer = addr
                     break
-        if not peer:
+            if not peer:
+                # Bug fix: target_node especificado mas offline —
+                # NÃO fazer find_peer_for(capability) que acharia o tracker.
+                # Vai direto pra relay-via-tracker.
+                return await self.send_task_via_tracker(
+                    "", target_node, capability, payload, ttl_s=ttl_s
+                )
+        else:
             peer = self._routing.find_peer_for(capability)
-
-        # Se não encontrou, faz QUERY broadcast
-        if not peer:
-            peer = await self._query_capability(capability, ttl=5, timeout=5)
-            if peer:
-                hello = hello_msg(self._node_id, self._tracker.get_public_caps(),
-                                  list(self._routing.local_interests),
-                                  self._tracker.visibility, self._version)
-                peer = await self._tcp.connect_to_peer(peer, hello_payload=hello)
+            if not peer:
+                peer = await self._query_capability(capability, ttl=5, timeout=5)
 
         if peer:
             try:
@@ -265,10 +265,6 @@ class Node:
                 return await self._wait_for_result(task_id, peer)
             except Exception as e:
                 return Result.make_error(task_id, "SEND_ERROR", str(e))
-
-        # Bug 2: Fallback via tracker antes de desistir
-        if not peer:
-            return await self.send_task_via_tracker("", target_node, capability, payload, ttl_s=ttl_s)
 
         return Result.make_error(task_id, "NO_PEER", f"No peer for: {capability}")
 
