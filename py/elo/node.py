@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.2",
+        version: str = "0.4.3",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -478,6 +478,48 @@ class Node:
 
     async def _on_bye(self, peer_addr: str, msg: dict) -> None:
         self._routing.remove_peer(peer_addr)
+
+    # ── relay via tracker ───────────────────────────────────
+
+    async def send_task_via_tracker(
+        self,
+        tracker_node: str,
+        target: str,
+        capability: str,
+        payload: dict[str, Any],
+        *,
+        ttl_s: int = 60,
+    ) -> Result:
+        """Send a task via tracker relay (for peers behind NAT/Docker).
+
+        Args:
+            tracker_node: node_id or addr of tracker (empty = auto)
+            target: node_id prefix or name of the destination
+            capability: capability to invoke on destination
+            payload: task payload
+        """
+        task_id = str(uuid.uuid4())
+        relay_payload = {
+            "target": target,
+            "capability": capability,
+            "payload": payload,
+            "ttl_s": ttl_s,
+        }
+        task_dict = p2p_task_msg(
+            task_id, tracker_node or "", self._node_id, "relay", relay_payload
+        )
+        task_dict.pop("signature", None)
+        task_dict["signature"] = self._identity.sign(task_dict)
+
+        peer = tracker_node or self._routing.find_peer_for("relay")
+        if peer:
+            try:
+                await self._tcp.send_to(peer, task_dict)
+                return await self._wait_for_result(task_id, peer)
+            except Exception as e:
+                return Result.make_error(task_id, "RELAY_ERROR", str(e))
+
+        return Result.make_error(task_id, "NO_TRACKER", "No tracker peer found")
 
     # ── helpers ───────────────────────────────────────────────
 

@@ -26,4 +26,4 @@ __all__ = [
     "Node", "Task", "Result", "Event", "NodeInfo", "Capabilities",
     "EphemeralIdentity", "generate_and_save_identity", "load_identity",
 ]
-__version__ = "0.4.2"
+__version__ = "0.4.3"
