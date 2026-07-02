@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elo-node"
-version = "0.4.0"
+version = "0.4.1"
 description = "Elo — malha P2P de mensagens para agentes de IA. Zero infraestrutura."
 readme = "README.md"
 license = {text = "MIT"}
@@ -36,5 +36,5 @@ dev = [
 elo = "elo.__main__:main"
 
 [project.urls]
-Homepage = "https://github.com/xalq/elo"
-Repository = "https://github.com/xalq/elo"
+Homepage = "https://github.com/andreocc/elo"
+Repository = "https://github.com/andreocc/elo"
