@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.1",
+        version: str = "0.4.2",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -293,11 +293,42 @@ class Node:
     # ── descoberta ─────────────────────────────────────────────
 
     async def discover_peers(self) -> list[dict[str, Any]]:
-        result = []
+        """Return all known peers with capabilities.
+
+        Merges data from TCP connections (live) and InterestTable (registered).
+        """
+        result: dict[str, dict[str, Any]] = {}
+
+        # From TCP connections — live peers
         for addr in self._tcp.peer_addresses:
-            caps = self._routing.get_peer_caps(addr)
-            result.append({"addr": addr, "connected": True,
-                          "caps": list(caps.get("caps", []))})
+            result[addr] = {"addr": addr, "connected": True, "caps": [], "via": "tcp"}
+
+        # From InterestTable — peers that completed HELLO handshake
+        for addr in self._routing.known_peers:
+            caps = list(self._routing.get_peer_caps(addr).get("caps", set()))
+            if addr in result:
+                result[addr]["caps"] = caps
+                result[addr]["via"] = "both"
+            else:
+                result[addr] = {"addr": addr, "connected": False, "caps": caps, "via": "routing"}
+
+        return list(result.values())
+
+    def get_known_peers(self) -> list[dict[str, Any]]:
+        """Return peers registered in InterestTable (completed HELLO handshake).
+
+        More reliable than discover_peers() — only includes peers that
+        completed the full handshake (HELLO + HELLO_ACK).
+        Meant for tracker/discovery use cases.
+        """
+        result = []
+        for addr in self._routing.known_peers:
+            info = self._routing.get_peer_caps(addr)
+            result.append({
+                "addr": addr,
+                "caps": list(info.get("caps", set())),
+                "interests": list(info.get("interests", set())),
+            })
         return result
 
     # ── run loop ──────────────────────────────────────────────

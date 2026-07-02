@@ -5,6 +5,7 @@ Uso:
 
 Todos os nós Elo se conectam a este tracker via `peers=["IP:7878"]`.
 O tracker responde `discovery` com a lista de todos os peers conhecidos.
+Usa a API pública `node.get_known_peers()` (v0.4.1+).
 """
 
 import asyncio
@@ -23,23 +24,17 @@ async def main():
     @node.on_task
     async def handle(task):
         if task.capability == "discovery":
-            peers = []
-            for addr in node._routing.known_peers:
-                info = node._routing.get_peer_caps(addr)
-                peers.append({
-                    "addr": addr,
-                    "caps": list(info.get("caps", set())),
-                })
+            peers = node.get_known_peers()
             return {
                 "tracker_id": node.node_id[:16],
-                "peers_connected": node.peer_count,
+                "peers_connected": len(peers),
                 "known_peers": peers,
                 "local_caps": list(node._routing.local_caps),
             }
         return {"echo": task.payload, "from": node.node_id, "node": "tracker"}
 
     logger = logging.getLogger("tracker")
-    logger.info(f"Elo tracker running on port {node.port} | id={node.node_id[:12]}")
+    logger.info(f"Tracker running | port={node.port} id={node.node_id[:12]}")
     await node.run()
 
 
