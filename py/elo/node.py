@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.4",
+        version: str = "0.4.5",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -110,7 +110,7 @@ class Node:
         self._task_handler: Callable[[Task], Awaitable[dict[str, Any]]] | None = None
         self._shutdown_event = asyncio.Event()
         self._pending_results: dict[str, asyncio.Future] = {}
-        self._pending_queries: dict[str, tuple[asyncio.Future, float]] = {}
+        self._pending_queries: dict[str, tuple[list[dict[str, Any]], asyncio.Event, float]] = {}
 
         # Cache de pubkeys para verificação de assinatura
         self._pubkey_cache: dict[str, tuple[Any, float]] = {}
@@ -330,33 +330,40 @@ class Node:
         return await self.get_known_peers_local()
 
     async def discover_peers_network(self, timeout: float = 5.0) -> list[dict[str, Any]]:
-        """Discover peers on the network via QUERY broadcast with empty capability.
+        """Discover peers on the network via QUERY broadcast.
 
-        Sends a broadcast QUERY for an empty capability (catch-all) and aggregates
-        responses for the given timeout period. Returns list of discovered peer dicts.
-
-        Args:
-            timeout: seconds to wait for responses (default 5.0)
-
-        Returns:
-            List of dicts with 'addr' and optionally 'node_id'
+        Envia QUERY com capability vazia e agrega todas as respostas
+        dentro do timeout. Modelo BitTorrent: o tracker retorna todos
+        os peers conhecidos, não só quem matcha a capability.
         """
         query_id = str(uuid.uuid4())[:8]
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending_queries[query_id] = (future, time.time())
+        collected: list[dict[str, Any]] = []
+        event = asyncio.Event()
+        self._pending_queries[query_id] = (collected, event, time.time())
         discovered: dict[str, dict[str, Any]] = {}
 
         # Broadcast QUERY for any capability
         await self._tcp.broadcast(query_msg("", query_id, ttl=3))
 
         try:
-            result_addr = await asyncio.wait_for(future, timeout=timeout)
-            if result_addr:
-                discovered[result_addr] = {"addr": result_addr, "connected": False, "caps": [], "via": "network"}
+            await asyncio.wait_for(event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
             pass
         finally:
             self._pending_queries.pop(query_id, None)
+
+        # Merge collected peers from all responses
+        known_addrs: set[str] = set()
+        for entry in collected:
+            addr = entry.get("addr", "")
+            if addr and addr not in discovered:
+                discovered[addr] = {
+                    "addr": addr,
+                    "caps": entry.get("caps", []),
+                    "connected": False,
+                    "via": "network",
+                }
+                known_addrs.add(addr)
 
         # Merge with locally known peers
         local = await self.get_known_peers_local()
@@ -460,12 +467,23 @@ class Node:
         capability = msg.get("capability", "")
         query_id = msg.get("id", "")
         ttl = msg.get("ttl", 5)
-        nodes = []
+        nodes: list[dict[str, Any]] = []
+
+        # Modelo BitTorrent: tracker retorna SEMPRE todos os peers conhecidos,
+        # não só quem matcha a capability. Isso permite que qualquer nó
+        # descubra a mesh completa com discover_peers_network().
+        for addr in self._routing.known_peers:
+            info = self._routing.get_peer_caps(addr)
+            if addr != peer_addr:
+                nodes.append({
+                    "addr": addr,
+                    "caps": list(info.get("caps", set())),
+                })
+
         if self._tracker.has_capability(capability):
             # Usa peer_addr (addr real do TCP) em vez de localhost — necessário para WAN/Tailscale
             nodes.append({"node_id": self._node_id[:12], "addr": peer_addr})
-        for p in self._routing.find_all_peers_for(capability):
-            nodes.append({"addr": p})
+
         if nodes:
             try:
                 await self._tcp.send_to(peer_addr, query_resp_msg(query_id, nodes))
@@ -477,10 +495,11 @@ class Node:
     async def _on_query_resp(self, peer_addr: str, msg: dict) -> None:
         query_id = msg.get("id", "")
         if query_id in self._pending_queries:
-            future, _ = self._pending_queries[query_id]
+            collected, event, _ts = self._pending_queries[query_id]
             nodes = msg.get("nodes", [])
-            if nodes and not future.done():
-                future.set_result(nodes[0].get("addr", ""))
+            if nodes:
+                collected.extend(nodes)
+                event.set()
 
     async def _on_interest_update(self, peer_addr: str, msg: dict) -> None:
         existing = self._routing.get_peer_caps(peer_addr)
@@ -609,15 +628,19 @@ class Node:
     async def _query_capability(self, capability: str, ttl: int = 5,
                                 timeout: float = 5.0) -> str | None:
         query_id = str(uuid.uuid4())[:8]
-        future: asyncio.Future = asyncio.get_event_loop().create_future()
-        self._pending_queries[query_id] = (future, time.time())
+        collected: list[dict[str, Any]] = []
+        event = asyncio.Event()
+        self._pending_queries[query_id] = (collected, event, time.time())
         await self._tcp.broadcast(query_msg(capability, query_id, ttl))
         try:
-            return await asyncio.wait_for(future, timeout=timeout)
+            await asyncio.wait_for(event.wait(), timeout=timeout)
         except asyncio.TimeoutError:
-            return None
+            pass
         finally:
             self._pending_queries.pop(query_id, None)
+        if collected:
+            return collected[0].get("addr", None)
+        return None
 
     async def _get_caller_pubkey(self, node_id: str) -> Any | None:
         now = time.time()
