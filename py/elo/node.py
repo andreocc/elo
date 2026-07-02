@@ -368,6 +368,7 @@ class Node:
             if addr and addr not in discovered:
                 discovered[addr] = {
                     "addr": addr,
+                    "node_id": entry.get("node_id", ""),
                     "caps": entry.get("caps", []),
                     "connected": False,
                     "via": "network",
@@ -395,8 +396,10 @@ class Node:
         result = []
         for addr in self._routing.known_peers:
             info = self._routing.get_peer_caps(addr)
+            node_id_prefix = addr.split("@")[0] if "@" in addr else ""
             result.append({
                 "addr": addr,
+                "node_id": node_id_prefix,
                 "caps": list(info.get("caps", set())),
                 "interests": list(info.get("interests", set())),
             })
