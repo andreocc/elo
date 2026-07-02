@@ -521,8 +521,10 @@ class Node:
         for addr in self._routing.known_peers:
             info = self._routing.get_peer_caps(addr)
             if addr != peer_addr:
+                node_id_prefix = addr.split("@")[0] if "@" in addr else ""
                 nodes.append({
                     "addr": addr,
+                    "node_id": node_id_prefix,
                     "caps": list(info.get("caps", set())),
                 })
 
