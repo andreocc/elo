@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.6",
+        version: str = "0.4.7",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -115,6 +115,14 @@ class Node:
         # Cache de pubkeys para verificação de assinatura
         self._pubkey_cache: dict[str, tuple[Any, float]] = {}
         self._cache_ttl_s = heartbeat_interval_s * 5
+
+        # Rate limiting
+        self._msg_count: dict[str, tuple[int, float]] = {}  # peer_addr → (count, window_start)
+        self._hello_count: dict[str, float] = {}             # peer_addr → last_hello_timestamp
+
+        # Cache de query_ids para prevenir broadcast loop
+        self._seen_queries: dict[str, float] = {}
+        self._seen_query_ttl = 60  # segundos
 
     # ── propriedades ──────────────────────────────────────────
 
@@ -232,8 +240,13 @@ class Node:
         task_dict.pop("signature", None)
         task_dict["signature"] = self._identity.sign(task_dict)
 
-        # Tenta encontrar peer
-        peer = target_node if target_node and target_node in self._tcp.peer_addresses else None
+        # Tenta encontrar peer — matcha node_id contra addresses no formato "prefix@ip:port"
+        peer = None
+        if target_node:
+            for addr in self._tcp.peer_addresses:
+                if addr.startswith(target_node[:12] + "@"):
+                    peer = addr
+                    break
         if not peer:
             peer = self._routing.find_peer_for(capability)
 
@@ -343,7 +356,7 @@ class Node:
         discovered: dict[str, dict[str, Any]] = {}
 
         # Broadcast QUERY for any capability
-        await self._tcp.broadcast(query_msg("", query_id, ttl=3))
+        await self._tcp.broadcast(query_msg("", query_id, ttl=3, origin=self._node_id))
 
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
@@ -413,6 +426,27 @@ class Node:
     async def _handle_message(self, peer_addr: str, msg: dict[str, Any]) -> None:
         msg_type = msg.get("type", "")
 
+        # ── Rate limiting ───────────────────────────────────────
+        now = time.monotonic()
+        # HELLO: max 1 per minute per peer
+        if msg_type == MessageType.HELLO:
+            last_hello = self._hello_count.get(peer_addr, 0.0)
+            if now - last_hello < 60:
+                logger.warning("[elo] rate limit: HELLO flood from %s", peer_addr[:20])
+                return
+            self._hello_count[peer_addr] = now
+
+        # General: max 100 messages per 60s window per peer
+        count, win_start = self._msg_count.get(peer_addr, (0, now))
+        if now - win_start > 60:
+            count, win_start = 0, now
+        count += 1
+        self._msg_count[peer_addr] = (count, win_start)
+        if count > 100:
+            logger.warning("[elo] rate limit: %d msgs in 60s from %s — dropping", count, peer_addr[:20])
+            return
+        # ── Fim rate limiting ───────────────────────────────────
+
         if msg_type == MessageType.HELLO:
             await self._on_hello(peer_addr, msg)
         elif msg_type == MessageType.HELLO_ACK:
@@ -467,6 +501,22 @@ class Node:
         capability = msg.get("capability", "")
         query_id = msg.get("id", "")
         ttl = msg.get("ttl", 5)
+        origin = msg.get("origin", "")
+
+        # Previne broadcast loop: não reencaminha se origin == self
+        if origin and origin == self._node_id:
+            return
+
+        # Previne duplicatas: cache de query_ids recentes
+        now = time.time()
+        # Limpa entradas expiradas
+        expired = [qid for qid, ts in self._seen_queries.items() if now - ts > self._seen_query_ttl]
+        for qid in expired:
+            self._seen_queries.pop(qid, None)
+        if query_id in self._seen_queries:
+            return
+        self._seen_queries[query_id] = now
+
         nodes: list[dict[str, Any]] = []
 
         # Modelo BitTorrent: tracker retorna SEMPRE todos os peers conhecidos,
@@ -490,7 +540,9 @@ class Node:
             except Exception:
                 pass
         elif ttl > 1:
-            await self._tcp.broadcast(query_msg(capability, query_id, ttl=ttl - 1), exclude={peer_addr})
+            # Propaga origin: usa a existente ou define self como origin
+            origin = origin or self._node_id
+            await self._tcp.broadcast(query_msg(capability, query_id, ttl=ttl - 1, origin=origin), exclude={peer_addr})
 
     async def _on_query_resp(self, peer_addr: str, msg: dict) -> None:
         query_id = msg.get("id", "")
@@ -543,6 +595,9 @@ class Node:
                 result_payload = {"message": "no handler registered"}
 
             result = result_msg(task_id, "success", payload=result_payload)
+            # Assina resultado para garantir autenticidade
+            result_no_sig = {k: v for k, v in result.items() if k != "signature"}
+            result["signature"] = self._identity.sign(result_no_sig)
             await self._tcp.send_to(peer_addr, result)
 
         except Exception as e:
@@ -556,6 +611,21 @@ class Node:
 
     async def _on_result(self, peer_addr: str, msg: dict) -> None:
         task_id = msg.get("id", "")
+
+        # Verifica assinatura do resultado se verify_peers estiver ativo
+        if self._verify_peers and msg.get("signature"):
+            result_no_sig = {k: v for k, v in msg.items() if k != "signature"}
+            # Extrai caller_id do pending_result (já que o caller original sabe quem enviou)
+            # O peer que enviou é conhecido via peer_addr — extraímos node_id do prefixo
+            peer_node_id = peer_addr.split("@")[0] if "@" in peer_addr else ""
+            if peer_node_id:
+                caller_pub = await self._get_caller_pubkey(peer_node_id)
+                if caller_pub:
+                    from elo.security import verify_signature
+                    if not verify_signature(caller_pub, result_no_sig, msg["signature"]):
+                        logger.warning("[elo] bad signature on result from %s", peer_node_id[:12])
+                        return  # descarta resultado com assinatura inválida
+
         future = self._pending_results.get(task_id)
         if future and not future.done():
             status = msg.get("status", "error")

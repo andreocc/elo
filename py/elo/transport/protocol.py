@@ -103,13 +103,16 @@ def hello_ack_msg(node_id: str, caps: dict, interests: list[str],
     return msg
 
 
-def query_msg(capability: str, query_id: str, ttl: int = 5) -> dict:
-    return {
+def query_msg(capability: str, query_id: str, ttl: int = 5, origin: str = "") -> dict:
+    msg: dict[str, Any] = {
         "type": MessageType.QUERY,
         "capability": capability,
         "id": query_id,
         "ttl": ttl,
     }
+    if origin:
+        msg["origin"] = origin
+    return msg
 
 
 def query_resp_msg(query_id: str, nodes: list[dict]) -> dict:
@@ -144,7 +147,7 @@ def task_msg(task_id: str, target: str, caller: str, capability: str,
 
 
 def result_msg(task_id: str, status: str, payload: dict | None = None,
-               error: dict | None = None) -> dict:
+               error: dict | None = None, signature: str = "") -> dict:
     msg = {
         "type": MessageType.RESULT,
         "id": task_id,
@@ -155,6 +158,8 @@ def result_msg(task_id: str, status: str, payload: dict | None = None,
         msg["payload"] = payload
     if error is not None:
         msg["error"] = error
+    if signature:
+        msg["signature"] = signature
     return msg
 
 
