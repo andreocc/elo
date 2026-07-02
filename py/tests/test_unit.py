@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -136,7 +137,7 @@ class TestNodeConstruction:
         node = Node("test-node")
         assert node._name == "test-node"
         assert node._port == 7878
-        assert node._version == "0.4.8"
+        assert node._version == "0.4.9"
         assert node.connected is False
         assert node.node_id is not None
         assert len(node.node_id) > 20
@@ -243,5 +244,53 @@ class TestResultMatching:
         assert r2.payload == {"r": 2}
         # Cleanup (normally done by _wait_for_result)
         node._pending_results.clear()
+
+        await node.disconnect()
+
+
+# ── TestNodeQueryResponse ────────────────────────────────
+
+class TestNodeQueryResponse:
+    """Verifica que _on_query retorna node_id nos nodes."""
+
+    @pytest.mark.asyncio
+    async def test_on_query_returns_node_id(self):
+        """_on_query must include node_id in discover_peers_network() response."""
+        node = Node("test-query", port=0)
+        await node.connect()
+        await node.register(agents=["echo"])
+
+        # Register a peer with node_id embedded in address: node_id@host:port
+        node._routing.register_peer(
+            "abc123@10.0.0.1:7878",
+            {"agents": [{"name": "echo"}], "tools": [], "models": []},
+            ["echo"],
+        )
+
+        # Spy on _tcp.send_to to capture the query response
+        sent_msgs = []
+        original_send = node._tcp.send_to
+        async def spy_send(addr, msg):
+            sent_msgs.append(msg)
+        node._tcp.send_to = spy_send
+
+        try:
+            await node._on_query("10.0.0.2:7879", {"capability": "echo", "id": "q1", "ttl": 3})
+        finally:
+            node._tcp.send_to = original_send
+
+        assert len(sent_msgs) > 0, "Expected at least one message sent back"
+        response = sent_msgs[0]
+        nodes = response.get("nodes", [])
+        assert len(nodes) > 0, "Expected at least one node in response"
+
+        # Verify the manually registered peer includes node_id
+        peer = None
+        for n in nodes:
+            if n.get("addr") == "abc123@10.0.0.1:7878":
+                peer = n
+                break
+        assert peer is not None, "Registered peer not found in response"
+        assert peer.get("node_id") == "abc123", f"Expected node_id='abc123', got '{peer.get('node_id')}'"
 
         await node.disconnect()
