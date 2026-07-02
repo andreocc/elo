@@ -89,14 +89,18 @@ def hello_msg(node_id: str, caps: dict, interests: list[str],
 
 
 def hello_ack_msg(node_id: str, caps: dict, interests: list[str],
-                  tracker: str = "public") -> dict:
-    return {
+                  tracker: str = "public",
+                  known_peers: list[dict] | None = None) -> dict:
+    msg: dict[str, Any] = {
         "type": MessageType.HELLO_ACK,
         "node_id": node_id,
         "caps": caps,
         "interests": interests,
         "tracker": tracker,
     }
+    if known_peers is not None:
+        msg["known_peers"] = known_peers
+    return msg
 
 
 def query_msg(capability: str, query_id: str, ttl: int = 5) -> dict:

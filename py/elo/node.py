@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.3",
+        version: str = "0.4.4",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
@@ -253,6 +253,10 @@ class Node:
             except Exception as e:
                 return Result.make_error(task_id, "SEND_ERROR", str(e))
 
+        # Bug 2: Fallback via tracker antes de desistir
+        if not peer:
+            return await self.send_task_via_tracker("", target_node, capability, payload, ttl_s=ttl_s)
+
         return Result.make_error(task_id, "NO_PEER", f"No peer for: {capability}")
 
     async def send_task_async(self, target_node: str, capability: str,
@@ -292,10 +296,11 @@ class Node:
 
     # ── descoberta ─────────────────────────────────────────────
 
-    async def discover_peers(self) -> list[dict[str, Any]]:
-        """Return all known peers with capabilities.
+    async def get_known_peers_local(self) -> list[dict[str, Any]]:
+        """Return all locally-known peers with capabilities (no network discovery).
 
         Merges data from TCP connections (live) and InterestTable (registered).
+        Does NOT perform any network queries — only returns what's already known.
         """
         result: dict[str, dict[str, Any]] = {}
 
@@ -313,6 +318,56 @@ class Node:
                 result[addr] = {"addr": addr, "connected": False, "caps": caps, "via": "routing"}
 
         return list(result.values())
+
+    # Alias de compatibilidade — o método anterior chamava-se discover_peers()
+    async def discover_peers(self) -> list[dict[str, Any]]:
+        """[DEPRECATED] Use get_known_peers_local() ou discover_peers_network().
+
+        Este método apenas consolida peers localmente conhecidos (TCP + InterestTable).
+        Não faz descoberta ativa de rede. Prefira discover_peers_network() para
+        descoberta via broadcast, ou get_known_peers() para peers com handshake completo.
+        """
+        return await self.get_known_peers_local()
+
+    async def discover_peers_network(self, timeout: float = 5.0) -> list[dict[str, Any]]:
+        """Discover peers on the network via QUERY broadcast with empty capability.
+
+        Sends a broadcast QUERY for an empty capability (catch-all) and aggregates
+        responses for the given timeout period. Returns list of discovered peer dicts.
+
+        Args:
+            timeout: seconds to wait for responses (default 5.0)
+
+        Returns:
+            List of dicts with 'addr' and optionally 'node_id'
+        """
+        query_id = str(uuid.uuid4())[:8]
+        future: asyncio.Future = asyncio.get_event_loop().create_future()
+        self._pending_queries[query_id] = (future, time.time())
+        discovered: dict[str, dict[str, Any]] = {}
+
+        # Broadcast QUERY for any capability
+        await self._tcp.broadcast(query_msg("", query_id, ttl=3))
+
+        try:
+            result_addr = await asyncio.wait_for(future, timeout=timeout)
+            if result_addr:
+                discovered[result_addr] = {"addr": result_addr, "connected": False, "caps": [], "via": "network"}
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            self._pending_queries.pop(query_id, None)
+
+        # Merge with locally known peers
+        local = await self.get_known_peers_local()
+        for entry in local:
+            addr = entry["addr"]
+            if addr not in discovered:
+                discovered[addr] = entry
+            else:
+                discovered[addr].update(entry)
+
+        return list(discovered.values())
 
     def get_known_peers(self) -> list[dict[str, Any]]:
         """Return peers registered in InterestTable (completed HELLO handshake).
@@ -355,6 +410,18 @@ class Node:
             await self._on_hello(peer_addr, msg)
         elif msg_type == MessageType.HELLO_ACK:
             await self._on_hello(peer_addr, msg)
+            # Bug 1: Se HELLO_ACK contém known_peers, conectar-se a eles
+            known_peers = msg.get("known_peers")
+            if known_peers:
+                hello = hello_msg(self._node_id, self._tracker.get_public_caps(),
+                                  list(self._routing.local_interests),
+                                  self._tracker.visibility, self._version)
+                for peer_info in known_peers:
+                    addr = peer_info.get("addr", "")
+                    if addr and addr != peer_addr and addr not in self._tcp.peer_addresses:
+                        asyncio.create_task(
+                            self._tcp.connect_to_peer(addr, hello_payload=hello)
+                        )
         elif msg_type == MessageType.QUERY:
             await self._on_query(peer_addr, msg)
         elif msg_type == MessageType.QUERY_RESP:
@@ -376,8 +443,14 @@ class Node:
         interests = msg.get("interests", [])
         self._routing.register_peer(peer_addr, caps, interests)
 
+        # Se for tracker (public/private), inclui peers conhecidos no ACK
+        known_peers = None
+        if msg.get("type") == MessageType.HELLO and self._tracker.visibility in ("public", "private"):
+            known_peers = self.get_known_peers()
+
         ack = hello_ack_msg(self._node_id, self._tracker.get_caps_for_peer(node_id),
-                            list(self._routing.local_interests), self._tracker.visibility)
+                            list(self._routing.local_interests), self._tracker.visibility,
+                            known_peers=known_peers)
         try:
             await self._tcp.send_to(peer_addr, ack)
         except Exception:

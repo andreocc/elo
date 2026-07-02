@@ -136,7 +136,7 @@ class TestNodeConstruction:
         node = Node("test-node")
         assert node._name == "test-node"
         assert node._port == 7878
-        assert node._version == "0.4.0"
+        assert node._version == "0.4.4"
         assert node.connected is False
         assert node.node_id is not None
         assert len(node.node_id) > 20
