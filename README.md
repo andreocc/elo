@@ -1,52 +1,11 @@
 # Elo 🔗
 
-**Malha P2P de mensagens para agentes de IA. Um processo. Uma porta. Uma chave.**
+**P2P message mesh for AI agents. One process. One TCP port. One ed25519 key.**
 
-Elo é uma mesh peer-to-peer: cada nó é um servidor TCP que se conecta diretamente a outros nós. Sem NATS, sem Kafka, sem Kubernetes. Apenas agentes conversando entre si.
-
-## Prova de 1 linha
+Elo is a peer-to-peer message mesh where every node is a TCP server that connects directly to other nodes. No NATS. No Kafka. No Kubernetes. Just agents talking to each other.
 
 ```bash
-python -c "
-import asyncio
-from elo import Node
-from elo.security import EphemeralIdentity
-async def t():
-    a=Node('a',port=0,identity=EphemeralIdentity()); b=Node('b',port=0,identity=EphemeralIdentity())
-    await a.connect(); await b.connect(); await a.register(agents=['echo'])
-    async def h(task): return {'echo':task.payload}
-    a.on_task(h)
-    from elo.transport import hello_msg
-    await b._tcp.connect_to_peer(f'localhost:{a.port}',hello_payload=hello_msg(b.node_id,{},{},'public','0.4.0'))
-    asyncio.create_task(a.run()); await __import__('asyncio').sleep(0.2)
-    r=await b.send_task('','echo',{'msg':'ping'})
-    assert r.status=='success' and r.payload['echo']['msg']=='ping'
-    print('OK')
-asyncio.run(t())
-"
-```
-
-## Filosofia
-
-- **Zero infraestrutura.** TCP direto entre peers. Sem servidor central.
-- **Identidade criptográfica.** Cada nó tem uma chave ed25519 — o `node_id` é a chave pública.
-- **Não é um framework.** Agentes existentes não precisam ser reescritos.
-- **Interest-based routing.** Peers anunciam o que têm e o que procuram.
-
-## Componentes
-
-| Componente | Linhas | Descrição |
-|-----------|--------|-----------|
-| **Elo Node** | ~300 | Servidor TCP + cliente P2P |
-| **Interest Table** | 135 | Roteamento por capability |
-| **Local Tracker** | 97 | Registro local de agentes/tools |
-| **Wire Protocol** | 167 | Framed JSON sobre TCP |
-| **Security** | 347 | ed25519 + X25519 + AES-256-GCM |
-
-## Início rápido
-
-```bash
-cd py && pip install -e .
+pip install elo-node
 ```
 
 ```python
@@ -54,29 +13,81 @@ import asyncio
 from elo import Node
 
 async def main():
-    node = Node("meu-agente", port=7878)
+    node = Node("my-agent", port=7878)
     await node.connect()
-    await node.register(agents=["echo-agent"], tools=["ping"])
+    await node.register(agents=["analyst"], tools=["web-search"])
 
     @node.on_task
     async def handle(task):
-        print(f"[task] {task.capability}: {task.payload}")
-        return {"echo": task.payload, "from": node.node_id}
+        return {"result": f"processed by {node.node_id}"}
 
     await node.run()
 
 asyncio.run(main())
 ```
 
+## Features
+
+- **Decentralized P2P** — discovery via public tracker or Kademlia DHT
+- **ed25519 signatures** — cryptographic identity, authenticated messages
+- **Capabilities** — publish/subscribe for agent skills across the mesh
+- **Zero infrastructure** — no Kafka, Redis, NATS, or central server
+- **Native CLI** — `python -m elo serve`, `status`, `init`, `id`
+
 ## CLI
 
 ```bash
-python -m elo status       # Node ID, hash, chaves
-python -m elo id           # Apenas o node_id
-python -m elo init         # Gerar identidade persistente (~/.elo/)
-python -m elo serve        # Iniciar nó interativo
+python -m elo status       # Node ID, hash, keys
+python -m elo id           # Just the node_id
+python -m elo pubkey       # Public key (hex + b64)
+python -m elo init         # Generate persistent identity
+python -m elo serve        # Start an interactive node
 ```
 
-## Licença
+## Architecture
 
-MIT — ver [LICENSE](LICENSE).
+```
+┌──────────────────┐     TCP/JSON     ┌──────────────────┐
+│   Node A          │◄──────────────►│   Node B          │
+│   ed25519 key     │                │   ed25519 key     │
+│   Capabilities    │                │   Capabilities    │
+│   Interests       │                │   Interests       │
+└──────────────────┘                 └──────────────────┘
+         │                                  │
+         │        Tracker (optional)         │
+         └────────────── DHT ───────────────┘
+```
+
+Each node:
+1. Generates an ed25519 identity on first run
+2. Listens on a TCP port
+3. Announces capabilities (e.g. "analyst", "web-search")
+4. Discovers other nodes via shared tracker or manual peers
+5. Exchanges signed messages (tasks, results, events)
+
+## Compatibility
+
+- Python 3.11+
+- Linux, macOS, Windows
+
+## Development
+
+```bash
+git clone https://github.com/andreocc/elo
+cd elo/py
+pip install -e ".[dev]"
+pytest
+```
+
+## WAN Test
+
+Elo has been tested between two machines via Tailscale (Brazil — OCI VM ↔ WSL). Tasks, capabilities, and signature verification work across real network boundaries. See `docs/runbooks/` for deployment patterns.
+
+## Related Projects
+
+- [Hermes Agent](https://hermes-agent.nousresearch.com) — autonomous agent runtime
+- [Honcho](https://github.com/argmax-inc/honcho) — persistent memory for agents
+
+---
+
+> 🇧🇷 Leia em português: [README.pt-BR.md](README.pt-BR.md)
