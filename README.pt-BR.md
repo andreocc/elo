@@ -65,6 +65,26 @@ Cada nó:
 4. Descobre outros nós via tracker compartilhado ou peers manuais
 5. Troca mensagens assinadas (tasks, results, events)
 
+## Tracker Privado
+
+Para 3+ nós ou nós atrás de NAT/Docker (sem porta pública), use um **tracker privado**:
+
+1. Escolha um nó sempre online como tracker (ex: SAM em `100.91.215.113:7878`)
+2. Rode `examples/python/tracker.py` nele
+3. Todos os outros nós conectam via `peers=["<ip-tracker>:7878"]`
+4. Qualquer nó descobre todos os demais via capability `discovery`
+
+```python
+# Nó cliente
+node = Node("meu-no", port=0, peers=["100.91.215.113:7878"])
+await node.connect()
+await node.register(agents=["analyst"])
+
+# Descobrir peers
+result = await node.send_task("", "discovery", {})
+# result.payload.known_peers → lista de todos os nós + capabilities
+```
+
 ## Teste WAN (Rede Real)
 
 Elo foi testado entre duas máquinas via Tailscale (Brasil — VM OCI ↔ WSL). Tasks, capabilities e verificação de assinatura funcionam através de redes reais. Veja `docs/runbooks/` para padrões de deploy.

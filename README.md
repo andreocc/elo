@@ -79,6 +79,26 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Private Tracker
+
+For 3+ nodes or nodes behind NAT/Docker (no public port), use a **private tracker**:
+
+1. Pick one always-on node as tracker (e.g. SAM at `100.91.215.113:7878`)
+2. Run `examples/python/tracker.py` on it
+3. All other nodes connect via `peers=["<tracker-ip>:7878"]`
+4. Any node can discover all others via the `discovery` capability
+
+```python
+# Client node
+node = Node("my-node", port=0, peers=["100.91.215.113:7878"])
+await node.connect()
+await node.register(agents=["analyst"])
+
+# Discover peers
+result = await node.send_task("", "discovery", {})
+# result.payload.known_peers → list of all connected nodes + capabilities
+```
+
 ## WAN Test
 
 Elo has been tested between two machines via Tailscale (Brazil — OCI VM ↔ WSL). Tasks, capabilities, and signature verification work across real network boundaries. See `docs/runbooks/` for deployment patterns.
