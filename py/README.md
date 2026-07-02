@@ -13,7 +13,7 @@ import asyncio
 from elo import Node
 
 async def main():
-    node = Node("my-agent", port=7878)
+    node = Node("my-agent", port=7878, peers=["100.91.215.113:7878"])
     await node.connect()
     await node.register(agents=["analyst"], tools=["web-search"])
 
@@ -31,6 +31,7 @@ asyncio.run(main())
 - **Decentralized P2P** — discovery via public tracker or Kademlia DHT
 - **ed25519 signatures** — cryptographic identity, authenticated messages
 - **Capabilities** — publish/subscribe of agent skills across the mesh
+- **Relay via tracker** — nodes behind NAT/Docker can communicate through a tracker
 - **Zero infra** — no Kafka, Redis, NATS, or central server
 - **Native CLI** — `python -m elo serve`, `status`, `init`, `id`
 
@@ -44,26 +45,21 @@ python -m elo init         # Generate persistent identity
 python -m elo serve        # Start an interactive node
 ```
 
-## Architecture
+## Key Concepts
 
-```
-┌──────────────────┐     TCP/JSON     ┌──────────────────┐
-│   Node A          │◄──────────────►│   Node B          │
-│   ed25519 key     │                │   ed25519 key     │
-│   Capabilities    │                │   Capabilities    │
-│   Interests       │                │   Interests       │
-└──────────────────┘                 └──────────────────┘
-         │                                  │
-         │        Tracker (optional)         │
-         └────────────── DHT ───────────────┘
-```
+- **`peers=` is required** for outbound connections. Without it the node only listens.
+- **`send_task()` auto-fallback:** direct → InterestTable → QUERY → **tracker relay** → NO_PEER
+- **HELLO_ACK with known_peers:** tracker shares all peers on handshake (v0.4.4+)
+- **`discover_peers_network()`** — QUERY broadcast across the mesh
 
-Each node:
-1. Generates an ed25519 identity on first run
-2. Listens on a TCP port
-3. Announces capabilities (e.g. "analyst", "web-search")
-4. Discovers other nodes via shared tracker or manual peers
-5. Exchanges signed messages (tasks, results, events)
+## Changelog
+
+| Version | Highlights |
+|---------|------------|
+| 0.4.5 | Multi-response discover, tracker returns all peers on query |
+| 0.4.4 | HELLO_ACK with known_peers, send_task auto-fallback tracker |
+| 0.4.3 | Relay via tracker, send_task_via_tracker() |
+| 0.4.0 | Initial release |
 
 ## Compatibility
 
