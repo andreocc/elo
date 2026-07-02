@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" font-family="'SF Mono','Fira Code','Courier New',monospace">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0a0e1a"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="natsGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00ADB5"/>
+      <stop offset="100%" stop-color="#0CB2C0"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="agentGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#4ADE80"/>
+    </linearGradient>
+    <linearGradient id="gatewayGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FBBF24"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10" fill="#4B5563"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="700" fill="url(#bgGrad)" rx="12"/>
+
+  <!-- Title -->
+  <text x="450" y="40" text-anchor="middle" fill="#F1F5F9" font-size="22" font-weight="bold" letter-spacing="2">ELO ARCHITECTURE</text>
+  <text x="450" y="60" text-anchor="middle" fill="#64748B" font-size="12" letter-spacing="4">v1.0 — NATS-BASED AGENT MESH</text>
+
+  <!-- Layer labels -->
+  <text x="30" y="105" fill="#94A3B8" font-size="11" letter-spacing="2">APPLICATION</text>
+  <text x="30" y="250" fill="#94A3B8" font-size="11" letter-spacing="2">REGISTRY</text>
+  <text x="30" y="420" fill="#94A3B8" font-size="11" letter-spacing="2">TRANSPORT</text>
+  <text x="30" y="545" fill="#94A3B8" font-size="11" letter-spacing="2">IDENTITY</text>
+
+  <!-- Dividers -->
+  <line x1="30" y1="115" x2="870" y2="115" stroke="#1E293B" stroke-width="1"/>
+  <line x1="30" y1="275" x2="870" y2="275" stroke="#1E293B" stroke-width="1"/>
+  <line x1="30" y1="440" x2="870" y2="440" stroke="#1E293B" stroke-width="1"/>
+  <line x1="30" y1="560" x2="870" y2="560" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- APPLICATION LAYER - Agent Boxes -->
+  <rect x="80" y="130" width="170" height="60" rx="8" fill="url(#agentGrad)" opacity="0.15" stroke="#22C55E" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="165" y="155" text-anchor="middle" fill="#22C55E" font-size="13" font-weight="bold">Hermes Agent</text>
+  <text x="165" y="173" text-anchor="middle" fill="#6EE7B7" font-size="10">Python / Go / TS</text>
+
+  <rect x="290" y="130" width="170" height="60" rx="8" fill="url(#agentGrad)" opacity="0.15" stroke="#22C55E" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="375" y="155" text-anchor="middle" fill="#22C55E" font-size="13" font-weight="bold">LangChain Agent</text>
+  <text x="375" y="173" text-anchor="middle" fill="#6EE7B7" font-size="10">qualquer framework</text>
+
+  <rect x="500" y="130" width="170" height="60" rx="8" fill="url(#agentGrad)" opacity="0.15" stroke="#22C55E" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="585" y="155" text-anchor="middle" fill="#22C55E" font-size="13" font-weight="bold">Raw Python</text>
+  <text x="585" y="173" text-anchor="middle" fill="#6EE7B7" font-size="10">script simples</text>
+
+  <rect x="710" y="130" width="160" height="60" rx="8" fill="url(#gatewayGrad)" opacity="0.15" stroke="#F59E0B" stroke-width="1.5" filter="url(#shadow)" stroke-dasharray="4,2"/>
+  <text x="790" y="155" text-anchor="middle" fill="#F59E0B" font-size="13" font-weight="bold">Gateway</text>
+  <text x="790" y="173" text-anchor="middle" fill="#FCD34D" font-size="10">A2A / MCP / HTTP</text>
+
+  <!-- Application to Transport arrows -->
+  <line x1="165" y1="190" x2="165" y2="300" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="375" y1="190" x2="375" y2="300" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="585" y1="190" x2="585" y2="300" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- REGISTRY LAYER -->
+  <rect x="80" y="290" width="230" height="120" rx="8" fill="#1E293B" stroke="#00ADB5" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="195" y="315" text-anchor="middle" fill="#00ADB5" font-size="13" font-weight="bold">NATS KV — elo-registry</text>
+  <text x="195" y="338" text-anchor="middle" fill="#94A3B8" font-size="11">node:{node_id} → metadados</text>
+  <text x="195" y="358" text-anchor="middle" fill="#94A3B8" font-size="11">caps:{node_id} → capacidades</text>
+  <text x="195" y="378" text-anchor="middle" fill="#94A3B8" font-size="11">peer:{node_id}:hb → heartbeat</text>
+  <text x="195" y="398" text-anchor="middle" fill="#64748B" font-size="10">TTL automático por heartbeat (90s)</text>
+
+  <rect x="370" y="290" width="500" height="55" rx="8" fill="#1E293B" stroke="#6366F1" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="620" y="313" text-anchor="middle" fill="#818CF8" font-size="12" font-weight="bold">CAPABILITY DISCOVERY</text>
+  <text x="620" y="333" text-anchor="middle" fill="#94A3B8" font-size="11">caller → scan caps:* → match por agente/modelo/tool → seleciona nó</text>
+
+  <rect x="370" y="355" width="500" height="55" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5" filter="url(#shadow)" stroke-dasharray="4,2"/>
+  <text x="620" y="378" text-anchor="middle" fill="#FBBF24" font-size="12" font-weight="bold">MISSION CONTROL</text>
+  <text x="620" y="398" text-anchor="middle" fill="#94A3B8" font-size="11">monitoramento · roteamento · auditoria · gestão da rede</text>
+
+  <!-- Registry to Transport arrows -->
+  <line x1="195" y1="410" x2="195" y2="455" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="620" y1="410" x2="620" y2="455" stroke="#4B5563" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- TRANSPORT LAYER -->
+  <rect x="80" y="455" width="790" height="80" rx="8" fill="url(#natsGrad)" opacity="0.12" stroke="#00ADB5" stroke-width="2" filter="url(#shadow)"/>
+  <text x="475" y="480" text-anchor="middle" fill="#00ADB5" font-size="15" font-weight="bold">NATS BUS</text>
+  <text x="475" y="498" text-anchor="middle" fill="#6EE7B7" font-size="11">Tópicos padronizados · JetStream · Request/Reply · Pub/Sub</text>
+
+  <!-- Topics in transport -->
+  <rect x="110" y="507" width="110" height="22" rx="4" fill="#0F172A" stroke="#00ADB5" stroke-width="1"/>
+  <text x="165" y="522" text-anchor="middle" fill="#00ADB5" font-size="10">elo.v1.hb.*</text>
+
+  <rect x="240" y="507" width="130" height="22" rx="4" fill="#0F172A" stroke="#00ADB5" stroke-width="1"/>
+  <text x="305" y="522" text-anchor="middle" fill="#00ADB5" font-size="10">elo.v1.task.*</text>
+
+  <rect x="390" y="507" width="130" height="22" rx="4" fill="#0F172A" stroke="#00ADB5" stroke-width="1"/>
+  <text x="455" y="522" text-anchor="middle" fill="#00ADB5" font-size="10">elo.v1.result.*</text>
+
+  <rect x="540" y="507" width="130" height="22" rx="4" fill="#0F172A" stroke="#00ADB5" stroke-width="1"/>
+  <text x="605" y="522" text-anchor="middle" fill="#00ADB5" font-size="10">elo.v1.event.*</text>
+
+  <rect x="690" y="507" width="150" height="22" rx="4" fill="#0F172A" stroke="#00ADB5" stroke-width="1"/>
+  <text x="765" y="522" text-anchor="middle" fill="#00ADB5" font-size="10">elo.v1.control.*</text>
+
+  <!-- IDENTITY LAYER -->
+  <rect x="80" y="575" width="230" height="80" rx="8" fill="#1E293B" stroke="#818CF8" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="195" y="600" text-anchor="middle" fill="#818CF8" font-size="12" font-weight="bold">NKEY (ed25519)</text>
+  <text x="195" y="620" text-anchor="middle" fill="#94A3B8" font-size="11">Chave privada local</text>
+  <text x="195" y="640" text-anchor="middle" fill="#94A3B8" font-size="11">Nunca trafega na rede</text>
+
+  <rect x="370" y="575" width="230" height="80" rx="8" fill="#1E293B" stroke="#818CF8" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="485" y="600" text-anchor="middle" fill="#818CF8" font-size="12" font-weight="bold">Account JWT</text>
+  <text x="485" y="620" text-anchor="middle" fill="#94A3B8" font-size="11">Expõe permissões</text>
+  <text x="485" y="640" text-anchor="middle" fill="#94A3B8" font-size="11">Define tópicos autorizados</text>
+
+  <rect x="660" y="575" width="210" height="80" rx="8" fill="#1E293B" stroke="#818CF8" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="765" y="600" text-anchor="middle" fill="#818CF8" font-size="12" font-weight="bold">TLS</text>
+  <text x="765" y="620" text-anchor="middle" fill="#94A3B8" font-size="11">Criptografia em trânsito</text>
+  <text x="765" y="640" text-anchor="middle" fill="#94A3B8" font-size="11">Obrigatório para WAN</text>
+
+  <!-- Legend -->
+  <rect x="80" y="670" width="12" height="12" rx="2" fill="#22C55E"/>
+  <text x="100" y="681" fill="#94A3B8" font-size="10">Aplicação</text>
+  <rect x="220" y="670" width="12" height="12" rx="2" fill="#00ADB5"/>
+  <text x="240" y="681" fill="#94A3B8" font-size="10">Infraestrutura</text>
+  <rect x="370" y="670" width="12" height="12" rx="2" fill="#F59E0B" stroke-width="1"/>
+  <text x="390" y="681" fill="#94A3B8" font-size="10">Opcional</text>
+  <rect x="500" y="670" width="12" height="12" rx="2" fill="#6366F1"/>
+  <text x="520" y="681" fill="#94A3B8" font-size="10">Segurança</text>
+</svg>
