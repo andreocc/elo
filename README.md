@@ -171,12 +171,17 @@ pytest
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| 0.4.10 | 03/jul/2026 | Fix stale peer on reconnect — `_remove_stale_peer()` removes old connection when same identity reconnects on different port |
-| 0.4.5 | 02/jul/2026 | Multi-response discover, tracker returns all peers on query |
-| 0.4.4 | 02/jul/2026 | HELLO_ACK with known_peers, send_task auto-fallback tracker |
-| 0.4.3 | 02/jul/2026 | Relay via tracker, send_task_via_tracker() |
-| 0.4.2 | 02/jul/2026 | discover_peers() fix, get_known_peers() API |
-| 0.4.0 | 02/jul/2026 | Initial release |
+|| 0.5.1 | 03/jul/2026 | HELLO_ACK loop fix (9/s), tracker self-connection guard, connect_to_peer host parsing, BYE rate limit, versões sync |
+|| 0.4.10 | 03/jul/2026 | Fix stale peer on reconnect — `_remove_stale_peer()` removes old connection when same identity reconnects on different port |
+|| 0.4.9 | 02/jul/2026 | Include `node_id` in `discover_peers_network()` response |
+|| 0.4.8 | 02/jul/2026 | Fix `send_task()` routing to tracker when target offline — tracker ecoa em vez de relay |
+|| 0.4.7 | 02/jul/2026 | Rate limiting, result signing (ed25519), broadcast loop prevent |
+|| 0.4.6 | 02/jul/2026 | Docs update, `__version__` fix |
+|| 0.4.5 | 02/jul/2026 | Multi-response discover, tracker returns all peers on query |
+|| 0.4.4 | 02/jul/2026 | HELLO_ACK with known_peers, send_task auto-fallback tracker |
+|| 0.4.3 | 02/jul/2026 | Relay via tracker, send_task_via_tracker() |
+|| 0.4.2 | 02/jul/2026 | discover_peers() fix, get_known_peers() API |
+|| 0.4.0 | 02/jul/2026 | Initial release |
 
 ## Related Projects
 

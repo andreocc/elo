@@ -167,18 +167,19 @@ pytest
 
 ## Changelog
 
-| Versão | Destaques |
-|--------|-----------|
-| 0.4.10 | **Correção stale peer** — tracker remove entrada antiga ao reconectar com mesma identidade, porta diferente |
-| 0.4.9 | `node_id` incluído na resposta de `discover_peers_network()` |
-| 0.4.8 | `send_task()` corrigido — fallback correto para relay via tracker quando target está offline |
-| 0.4.7 | Rate limiting, assinatura de resultados, correção de broadcast loop |
-| 0.4.6 | Atualização de documentação, correção `__version__` |
-| 0.4.5 | Discover multiresposta, tracker retorna todos peers |
-| 0.4.4 | HELLO_ACK com known_peers, send_task fallback tracker |
-| 0.4.3 | Relay via tracker, `send_task_via_tracker()` |
-| 0.4.2 | `discover_peers()` fix, `get_known_peers()` API |
-| 0.4.0 | Lançamento inicial |
+|| Versão | Data | Destaques |
+||--------|------|-----------|
+|| 0.5.1 | 03/jul/2026 | HELLO_ACK loop fix (9/s), self-connection guard, connect_to_peer parsing, BYE rate limit, versões sync |
+|| 0.4.10 | 03/jul/2026 | Correção stale peer — tracker remove entrada antiga ao reconectar com mesma identidade, porta diferente |
+|| 0.4.9 | 02/jul/2026 | `node_id` incluído na resposta de `discover_peers_network()` |
+|| 0.4.8 | 02/jul/2026 | Fix `send_task()` roteia pro tracker quando target offline |
+|| 0.4.7 | 02/jul/2026 | Rate limiting, assinatura de resultados (ed25519), broadcast loop |
+|| 0.4.6 | 02/jul/2026 | Atualização docs, correção `__version__` |
+|| 0.4.5 | 02/jul/2026 | Discover multiresposta, tracker retorna todos peers |
+|| 0.4.4 | 02/jul/2026 | HELLO_ACK com known_peers, send_task fallback tracker |
+|| 0.4.3 | 02/jul/2026 | Relay via tracker, `send_task_via_tracker()` |
+|| 0.4.2 | 02/jul/2026 | `discover_peers()` fix, `get_known_peers()` API |
+|| 0.4.0 | 02/jul/2026 | Lançamento inicial |
 
 ## Projetos Relacionados
 
