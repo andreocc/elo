@@ -176,6 +176,11 @@ class TCPManager:
                 return
 
             remote_id = hello.get("node_id", "")
+            # Self-connection guard: rejeita se o peer tem o mesmo node_id
+            if remote_id[:12] == self._node_id[:12]:
+                logger.warning("[tcp] self-connection rejected: %s", addr)
+                peer.close()
+                return
             addr = f"{remote_id[:12]}@{addr}"
             peer.addr = addr
 
