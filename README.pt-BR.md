@@ -31,9 +31,9 @@ asyncio.run(main())
 - **P2P descentralizado** — descoberta via tracker público ou DHT Kademlia
 - **Assinatura ed25519** — identidade criptográfica, mensagens autenticadas
 - **Capabilities** — publish/subscribe de capacidades entre nós
+- **Relay via tracker** — nós atrás de NAT/Docker se comunicam através do tracker
 - **Zero infraestrutura** — sem Kafka, Redis, NATS, ou servidor central
 - **CLI nativo** — `python -m elo serve`, `status`, `init`, `id`
-- **Relay via tracker** — nós atrás de NAT/Docker se comunicam através do tracker
 
 ## CLI
 
@@ -56,8 +56,7 @@ node = Node("agente-1", port=7878, peers=["100.91.215.113:7878"])
 await node.connect()
 ```
 
-Ao conectar a um tracker v0.4.4+, o handshake HELLO inclui automaticamente
-a lista de peers conhecidos — novos nós são descobertos na conexão.
+No handshake HELLO com um tracker (v0.4.4+), os peers conhecidos são trocados automaticamente — novos nós são descobertos na conexão.
 
 ### 2. Registrar capacidades
 
@@ -68,12 +67,10 @@ await node.register(agents=["ping", "analyst"], tools=["web-search"])
 ### 3. Enviar tasks
 
 ```python
-# Fallback automático via tracker se não achar peer direto
+# Fallback automático: direto → InterestTable → QUERY → relay tracker → NO_PEER
 result = await node.send_task("", "ping", {"msg": "hello"})
 # → Result(status="success", payload={...})
 ```
-
-`send_task()` tenta: peer direto → InterestTable → QUERY broadcast → **relay do tracker** → NO_PEER
 
 ### 4. Descobrir peers
 
@@ -81,7 +78,7 @@ result = await node.send_task("", "ping", {"msg": "hello"})
 # Peers com handshake completo
 conhecidos = node.get_known_peers()
 
-# Descobrir via QUERY broadcast (varredura de rede)
+# QUERY broadcast pela malha (retorna node_id + endereços)
 peers = await node.discover_peers_network(timeout=5.0)
 
 # Legado (local-only, depreciado)
@@ -135,6 +132,12 @@ Para 3+ nós ou nós atrás de NAT/Docker (sem porta pública), use um **tracker
 node = Node("meu-no", port=0, peers=["100.91.215.113:7878"])
 ```
 
+### Prevenção de stale peer (v0.4.10)
+
+Quando um nó reinicia (Docker, reboot) com a mesma identidade mas **porta diferente**, o tracker anteriormente mantinha a entrada antiga — tasks podiam falhar com "Peer not connected".
+
+**Corrigido no v0.4.10:** o tracker agora remove qualquer entrada existente com o mesmo `node_id` no HELLO, antes de registrar a nova conexão. Identidade persiste (chave ed25519), porta continua dinâmica — ambos preservados.
+
 ## API Reference
 
 | Método | Descrição |
@@ -164,13 +167,18 @@ pytest
 
 ## Changelog
 
-| Versão | Data | Destaques |
-|--------|------|-----------|
-| 0.4.5 | 02/jul/2026 | discover multiresposta, tracker retorna todos peers |
-| 0.4.4 | 02/jul/2026 | HELLO_ACK com known_peers, send_task fallback tracker |
-| 0.4.3 | 02/jul/2026 | Relay via tracker, send_task_via_tracker() |
-| 0.4.2 | 02/jul/2026 | discover_peers() fix, get_known_peers() API |
-| 0.4.0 | 02/jul/2026 | Lançamento inicial |
+| Versão | Destaques |
+|--------|-----------|
+| 0.4.10 | **Correção stale peer** — tracker remove entrada antiga ao reconectar com mesma identidade, porta diferente |
+| 0.4.9 | `node_id` incluído na resposta de `discover_peers_network()` |
+| 0.4.8 | `send_task()` corrigido — fallback correto para relay via tracker quando target está offline |
+| 0.4.7 | Rate limiting, assinatura de resultados, correção de broadcast loop |
+| 0.4.6 | Atualização de documentação, correção `__version__` |
+| 0.4.5 | Discover multiresposta, tracker retorna todos peers |
+| 0.4.4 | HELLO_ACK com known_peers, send_task fallback tracker |
+| 0.4.3 | Relay via tracker, `send_task_via_tracker()` |
+| 0.4.2 | `discover_peers()` fix, `get_known_peers()` API |
+| 0.4.0 | Lançamento inicial |
 
 ## Projetos Relacionados
 
