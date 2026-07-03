@@ -130,6 +130,28 @@ class TCPManager:
 
         logger.info("[tcp] stopped")
 
+    def _remove_stale_peer(self, node_id_prefix: str) -> str | None:
+        """Remove and close peer connection with same node_id prefix.
+
+        When a node reconnects with the same identity but different IP:port
+        (e.g. Docker restart, portable enviroment), the old entry in _peers
+        becomes stale. This method finds and removes it so routing/tracker
+        always uses the live connection.
+
+        Returns the stale key that was removed, or None if no stale peer found.
+        """
+        prefix = node_id_prefix[:12] + "@"
+        for key in list(self._peers.keys()):
+            if key.startswith(prefix):
+                stale = self._peers.pop(key, None)
+                if stale:
+                    try:
+                        stale.close()
+                    except Exception:
+                        pass
+                return key
+        return None
+
     # ── handlers ─────────────────────────────────────────────
 
     def on_message(self, handler: MessageHandler) -> None:
@@ -156,6 +178,11 @@ class TCPManager:
             remote_id = hello.get("node_id", "")
             addr = f"{remote_id[:12]}@{addr}"
             peer.addr = addr
+
+            # Remove stale connection for same node_id (porta/endereço mudou)
+            stale_key = self._remove_stale_peer(remote_id[:12])
+            if stale_key:
+                logger.info("[tcp] replaced stale peer: %s -> %s", stale_key, addr)
 
             self._peers[addr] = peer
             logger.info("[tcp] peer connected: %s", addr)
@@ -241,6 +268,11 @@ class TCPManager:
         remote_id = ack.get("node_id", "")
         display_addr = f"{remote_id[:12]}@{canonical}"
         peer.addr = display_addr
+
+        # Remove stale connection for same node_id
+        stale_key = self._remove_stale_peer(remote_id[:12])
+        if stale_key:
+            logger.info("[tcp] outbound replaced stale peer: %s -> %s", stale_key, display_addr)
 
         self._peers[display_addr] = peer
 
