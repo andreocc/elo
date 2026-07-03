@@ -3,7 +3,7 @@ import asyncio, sys
 sys.path.insert(0, "..")
 from elo import Node
 
-TRACKER = "100.91.215.113:7878"  # SAM Tailscale IP
+TRACKER = "TRACKER_IP:7878"  # Replace with your tracker's IP:port
 
 async def main():
     node = Node("wan-tester", port=0, peers=[TRACKER])

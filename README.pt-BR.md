@@ -13,7 +13,7 @@ import asyncio
 from elo import Node
 
 async def main():
-    node = Node("meu-agente", port=7878, peers=["100.91.215.113:7878"])
+    node = Node("meu-agente", port=7878, peers=["TRACKER_IP:7878"])
     await node.connect()
     await node.register(agents=["analyst"], tools=["web-search"])
 
@@ -52,7 +52,7 @@ python -m elo serve        # Iniciar nó interativo
 ⚠️ `peers=` é **obrigatório** para conexões de saída. Sem ele, o nó só escuta.
 
 ```python
-node = Node("agente-1", port=7878, peers=["100.91.215.113:7878"])
+node = Node("agente-1", port=7878, peers=["TRACKER_IP:7878"])
 await node.connect()
 ```
 
@@ -122,14 +122,14 @@ Cada nó:
 
 Para 3+ nós ou nós atrás de NAT/Docker (sem porta pública), use um **tracker privado**:
 
-1. Escolha um nó sempre online como tracker (ex: SAM em `100.91.215.113:7878`)
+1. Escolha um nó sempre online como tracker (ex: SAM em `TRACKER_IP:7878`)
 2. Rode `examples/python/tracker.py` nele
 3. Todos os outros nós conectam via `peers=["<ip-tracker>:7878"]`
 4. O tracker faz relay de tasks entre os nós automaticamente
 
 ```python
 # Nó cliente
-node = Node("meu-no", port=0, peers=["100.91.215.113:7878"])
+node = Node("meu-no", port=0, peers=["TRACKER_IP:7878"])
 ```
 
 ### Prevenção de stale peer (v0.4.10)

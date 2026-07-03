@@ -30,7 +30,7 @@ Nó C (qualquer)               → conecta ao ──┘
 ### Setup com tracker
 
 ```bash
-# Máquina tracker (ex: SAM, IP 100.91.215.113)
+# Máquina tracker (ex: SAM, IP TRACKER_IP)
 pip install elo-node
 python examples/python/tracker.py
 
@@ -39,7 +39,7 @@ python -c "
 from elo import Node
 import asyncio
 async def main():
-    node = Node('no-a', port=0, peers=['100.91.215.113:7878'])
+    node = Node('no-a', port=0, peers=['TRACKER_IP:7878'])
     await node.connect()
     await node.register(agents=['analyst'])
     await node.run()
@@ -51,7 +51,7 @@ python -c "
 from elo import Node
 import asyncio
 async def main():
-    node = Node('no-b', port=0, peers=['100.91.215.113:7878'])
+    node = Node('no-b', port=0, peers=['TRACKER_IP:7878'])
     await node.connect()
     await node.register(agents=['writer'])
     await asyncio.sleep(1)

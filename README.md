@@ -13,7 +13,7 @@ import asyncio
 from elo import Node
 
 async def main():
-    node = Node("my-agent", port=7878, peers=["100.91.215.113:7878"])
+    node = Node("my-agent", port=7878, peers=["TRACKER_IP:7878"])
     await node.connect()
     await node.register(agents=["analyst"], tools=["web-search"])
 
@@ -49,16 +49,14 @@ python -m elo serve        # Start an interactive node
 
 ### 1. Connect to a tracker
 
-⚠️ `peers=` is **required** for outbound connections. Without it, the node listens only.
+⚠️ `peers=` is **required** for outbound connections. Without it the node only listens.
 
 ```python
-# This connects to the tracker AND starts a TCP server
-node = Node("agent-1", port=7878, peers=["100.91.215.113:7878"])
+node = Node("agent-1", port=7878, peers=["TRACKER_IP:7878"])
 await node.connect()
 ```
 
-When connecting to a v0.4.4+ tracker, the HELLO handshake automatically
-includes the list of known peers — new nodes are discovered on connect.
+On HELLO handshake with a tracker (v0.4.4+), known peers are automatically exchanged — new nodes are discovered on connect.
 
 ### 2. Register capabilities
 
@@ -132,14 +130,14 @@ Each node:
 
 For 3+ nodes or nodes behind NAT/Docker, use a **private tracker**:
 
-1. Pick an always-online node as tracker (e.g., SAM at `100.91.215.113:7878`)
+1. Pick an always-online node as tracker (e.g. SAM at `TRACKER_IP:7878`)
 2. Run `examples/python/tracker.py` on it
 3. All other nodes connect via `peers=["<tracker-ip>:7878"]`
-4. Tracker relays tasks between nodes automatically
+4. The tracker relays tasks between nodes automatically
 
 ```python
 # Client node
-node = Node("my-node", port=0, peers=["100.91.215.113:7878"])
+node = Node("my-node", port=0, peers=["TRACKER_IP:7878"])
 ```
 
 ## API Reference

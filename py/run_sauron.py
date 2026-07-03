@@ -4,7 +4,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message
 from elo import Node
 
 async def main():
-    node = Node("sauron-elo", port=0, peers=["100.91.215.113:7878"])
+    node = Node("sauron-elo", port=0, peers=["TRACKER_IP:7878"])
     await node.connect()
     await node.register(agents=["ping", "status", "agent-info", "hermes"])
     @node.on_task

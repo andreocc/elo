@@ -13,7 +13,7 @@ import asyncio
 from elo import Node
 
 async def main():
-    node = Node("my-agent", port=7878, peers=["100.91.215.113:7878"])
+    node = Node("my-agent", port=7878, peers=["TRACKER_IP:7878"])
     await node.connect()
     await node.register(agents=["analyst"], tools=["web-search"])
 
@@ -52,7 +52,7 @@ python -m elo serve        # Start an interactive node
 ⚠️ `peers=` is **required** for outbound connections. Without it the node only listens.
 
 ```python
-node = Node("agent-1", port=7878, peers=["100.91.215.113:7878"])
+node = Node("agent-1", port=7878, peers=["TRACKER_IP:7878"])
 await node.connect()
 ```
 
@@ -122,14 +122,14 @@ Each node:
 
 For 3+ nodes or nodes behind NAT/Docker (no public port), use a **private tracker**:
 
-1. Pick an always-online node as tracker (e.g. SAM at `100.91.215.113:7878`)
+1. Pick an always-online node as tracker (e.g. SAM at `TRACKER_IP:7878`)
 2. Run `examples/python/tracker.py` on it
 3. All other nodes connect via `peers=["<tracker-ip>:7878"]`
 4. The tracker relays tasks between nodes automatically
 
 ```python
 # Client node
-node = Node("my-node", port=0, peers=["100.91.215.113:7878"])
+node = Node("my-node", port=0, peers=["TRACKER_IP:7878"])
 ```
 
 ### Stale peer prevention (v0.4.10)

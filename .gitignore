@@ -8,3 +8,12 @@ build/
 .env
 .venv/
 venv/
+
+# Security — never commit keys or seeds
+identity.seed
+*.seed
+*.pem
+*.key
+*.priv
+secrets/
+.private/

@@ -43,7 +43,7 @@ python -m elo serve
 node = Node("meu-no", port=7878)
 
 # Conecta-se ao tracker + escuta
-node = Node("meu-no", port=7878, peers=["100.91.215.113:7878"])
+node = Node("meu-no", port=7878, peers=["TRACKER_IP:7878"])
 ```
 
 Quando conectado a um tracker público/privado, o handshake HELLO→HELLO_ACK já inclui
