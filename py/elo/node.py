@@ -491,17 +491,18 @@ class Node:
         # Exclui o próprio peer que está conectando — senão ele tenta
         # conectar a si mesmo via known_peers.
         known_peers = None
-        if msg.get("type") == MessageType.HELLO and self._tracker.visibility in ("public", "private"):
-            all_peers = self.get_known_peers()
-            known_peers = [p for p in all_peers if p.get("addr", "") != peer_addr]
+        if msg.get("type") == MessageType.HELLO:
+            if self._tracker.visibility in ("public", "private"):
+                all_peers = self.get_known_peers()
+                known_peers = [p for p in all_peers if p.get("addr", "") != peer_addr]
 
-        ack = hello_ack_msg(self._node_id, self._tracker.get_caps_for_peer(node_id),
-                            list(self._routing.local_interests), self._tracker.visibility,
-                            known_peers=known_peers)
-        try:
-            await self._tcp.send_to(peer_addr, ack)
-        except Exception:
-            pass
+            ack = hello_ack_msg(self._node_id, self._tracker.get_caps_for_peer(node_id),
+                                list(self._routing.local_interests), self._tracker.visibility,
+                                known_peers=known_peers)
+            try:
+                await self._tcp.send_to(peer_addr, ack)
+            except Exception:
+                pass
 
     async def _on_query(self, peer_addr: str, msg: dict) -> None:
         capability = msg.get("capability", "")
