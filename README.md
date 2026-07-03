@@ -28,10 +28,10 @@ asyncio.run(main())
 
 ## Features
 
-- **Decentralized P2P** — discovery via public tracker or Kademlia DHT
+- **Tracker-centric P2P** — nodes connect to a shared tracker for discovery and relay
 - **ed25519 signatures** — cryptographic identity, authenticated messages
 - **Capabilities** — publish/subscribe for agent skills across the mesh
-- **Zero infrastructure** — no Kafka, Redis, NATS, or central server
+- **Zero infrastructure** — no Kafka, Redis, NATS, or Kubernetes
 - **Native CLI** — `python -m elo serve`, `status`, `init`, `id`
 - **Relay via tracker** — nodes behind NAT/Docker can communicate through a tracker relay
 
@@ -104,23 +104,29 @@ result = await node.send_task_via_tracker(
 ## Architecture
 
 ```
-┌──────────────────┐     TCP/JSON     ┌──────────────────┐
-│   Node A          │◄──────────────►│   Node B          │
-│   ed25519 key     │                │   ed25519 key     │
-│   Capabilities    │                │   Capabilities    │
-│   Interests       │                │   Interests       │
-└──────────────────┘                 └──────────────────┘
-         │                                  │
-         │        Tracker (optional)         │
-         └────────────── DHT ───────────────┘
+┌──────────────────┐      TCP/JSON       ┌──────────────────┐
+│   Node A          │◄─────────────────►│   Node B          │
+│   ed25519 key     │    (via tracker)   │   ed25519 key     │
+│   Capabilities    │                    │   Capabilities    │
+└────────┬─────────┘                    └────────┬─────────┘
+         │                                       │
+         │         ┌─────────────────┐           │
+         └────────►│   Tracker       │◄──────────┘
+                   │  (relay +       │
+                   │   discovery)    │
+                   └─────────────────┘
 ```
 
 Each node:
-1. Generates an ed25519 identity on first run
-2. Listens on a TCP port
-3. Announces capabilities (e.g. "analyst", "web-search")
-4. Discovers other nodes via shared tracker or manual peers
-5. Exchanges signed messages (tasks, results, events)
+1. Generates an ed25519 identity on first run (persisted to disk)
+2. Listens on a TCP port (dynamic or fixed)
+3. Connects to a shared tracker for discovery
+4. Announces capabilities (e.g. "analyst", "web-search")
+5. Receives tasks relayed by the tracker when direct P2P isn't possible
+
+> **Identity is persistent**: the ed25519 key survives restarts.
+> **Port is dynamic**: nodes can reconnect on any port — the tracker
+> automatically replaces stale peer entries on reconnect (v0.4.10+).
 
 ## Tracker (Private)
 
@@ -167,6 +173,7 @@ pytest
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.4.10 | 03/jul/2026 | Fix stale peer on reconnect — `_remove_stale_peer()` removes old connection when same identity reconnects on different port |
 | 0.4.5 | 02/jul/2026 | Multi-response discover, tracker returns all peers on query |
 | 0.4.4 | 02/jul/2026 | HELLO_ACK with known_peers, send_task auto-fallback tracker |
 | 0.4.3 | 02/jul/2026 | Relay via tracker, send_task_via_tracker() |
