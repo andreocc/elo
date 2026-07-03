@@ -78,7 +78,7 @@ class Node:
         peers: list[str] | None = None,
         tracker: str = "public",
         allowlist: list[str] | None = None,
-        version: str = "0.4.9",
+        version: str = "0.5.1",
         identity: EphemeralIdentity | None = None,
         verify_peers: bool = True,
         heartbeat_interval_s: int = 30,
