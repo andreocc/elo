@@ -441,6 +441,12 @@ class Node:
             count, win_start = 0, now
         count += 1
         self._msg_count[peer_addr] = (count, win_start)
+        
+        # BYE sempre passa — mesmo com rate limit, para não acumular stale peers
+        if msg_type == MessageType.BYE:
+            await self._on_bye(peer_addr, msg)
+            return
+        
         if count > 100:
             logger.warning("[elo] rate limit: %d msgs in 60s from %s — dropping", count, peer_addr[:20])
             return
@@ -472,8 +478,6 @@ class Node:
             await self._on_task(peer_addr, msg)
         elif msg_type == MessageType.RESULT:
             await self._on_result(peer_addr, msg)
-        elif msg_type == MessageType.BYE:
-            await self._on_bye(peer_addr, msg)
 
     # ── protocol handlers ─────────────────────────────────────
 

@@ -227,17 +227,27 @@ class TCPManager:
     async def connect_to_peer(self, addr: str, node_id: str = "unknown",
                                hello_payload: dict | None = None) -> str | None:
         """Connect to a remote peer. Returns the assigned peer address on success."""
+        # Strip prefix@ if present (e.g. "Qjvp1B0m6gKS@100.91.215.113:7878")
+        if "@" in addr:
+            _, _, addr = addr.partition("@")
         if ":" not in addr:
             logger.warning("[tcp] invalid address: %s", addr)
             return None
 
         # Normalize: if no port, use default
-        host, _, port_str = addr.partition(":")
-        port = int(port_str) if port_str else self._port
+        host, _, port_str = addr.rpartition(":")
+        if not port_str or not port_str.isdigit():
+            port_str = str(self._port)
+        port = int(port_str)
         canonical = f"{host}:{port}"
 
         if canonical in self._peers:
             return canonical
+
+        # Self-connection guard: never connect to our own listener
+        if port == self._port and host in ("127.0.0.1", "0.0.0.0", "localhost"):
+            logger.debug("[tcp] skipping self-connection: %s", canonical)
+            return None
 
         try:
             reader, writer = await asyncio.wait_for(
