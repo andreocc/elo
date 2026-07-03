@@ -19,6 +19,7 @@ from elo.transport.protocol import (
 )
 from elo.transport.routing import InterestTable
 from elo.transport.tracker import LocalTracker
+from elo.transport.discovery import DiscoveryManager
 
 __all__ = [
     "TCPManager", "PeerConnection",
@@ -31,4 +32,5 @@ __all__ = [
     "MessageType", "FrameError",
     "InterestTable",
     "LocalTracker",
+    "DiscoveryManager",
 ]

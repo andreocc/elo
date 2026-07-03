@@ -33,7 +33,17 @@ def _short_id(node_id: str, n: int = 12) -> str:
 
 def cmd_status() -> None:
     """Exibe o status completo do nó (identidade, chaves)."""
-    identity = EphemeralIdentity()
+    seed_path = DEFAULT_KEY_DIR / "identity.seed"
+    has_persisted = False
+    if seed_path.exists():
+        try:
+            identity = load_identity()
+            has_persisted = True
+        except Exception:
+            identity = EphemeralIdentity()
+    else:
+        identity = EphemeralIdentity()
+
     node_id = identity.node_id
     pubkey_bytes = identity.public_key.public_bytes_raw()
 
@@ -51,16 +61,9 @@ def cmd_status() -> None:
     print(f"  {node_id}")
     print("-" * 52)
 
-    seed_path = DEFAULT_KEY_DIR / "identity.seed"
-    if seed_path.exists():
-        try:
-            priv, x25519 = load_identity()
-            pub = priv.public_key()
-            saved_id = pubkey_to_id(pub)
-            print(f"  Persisted:  {DEFAULT_KEY_DIR}")
-            print(f"  Saved ID:   {saved_id}")
-        except Exception:
-            print(f"  Persisted:  ERROR loading from {DEFAULT_KEY_DIR}")
+    if has_persisted:
+        print(f"  Persisted:  {DEFAULT_KEY_DIR}")
+        print(f"  Saved ID:   {node_id}")
     else:
         print(f"  Persisted:  no (ephemeral)")
         print(f"  Use 'python -m elo init' to save")
@@ -70,12 +73,26 @@ def cmd_status() -> None:
 
 
 def cmd_id() -> None:
-    identity = EphemeralIdentity()
+    seed_path = DEFAULT_KEY_DIR / "identity.seed"
+    if seed_path.exists():
+        try:
+            identity = load_identity()
+        except Exception:
+            identity = EphemeralIdentity()
+    else:
+        identity = EphemeralIdentity()
     print(identity.node_id)
 
 
 def cmd_pubkey() -> None:
-    identity = EphemeralIdentity()
+    seed_path = DEFAULT_KEY_DIR / "identity.seed"
+    if seed_path.exists():
+        try:
+            identity = load_identity()
+        except Exception:
+            identity = EphemeralIdentity()
+    else:
+        identity = EphemeralIdentity()
     node_id = identity.node_id
     pubkey = identity.public_key.public_bytes_raw()
     print(f"node_id (b64):  {node_id}")
@@ -97,13 +114,30 @@ def cmd_init() -> None:
     print("   Without it, peers will not recognize this node after restart.")
 
 
-def cmd_serve() -> None:
+def cmd_serve(args: argparse.Namespace) -> None:
     from elo import Node
 
+    peers_list = [p.strip() for p in args.peers.split(",")] if args.peers else None
+
+    # Load persistent identity if exists, otherwise Node() will generate ephemeral
+    identity = None
+    seed_path = DEFAULT_KEY_DIR / "identity.seed"
+    if seed_path.exists():
+        try:
+            identity = load_identity()
+        except Exception:
+            pass
+
     async def _serve():
-        node = Node("elo-cli", port=7878)
+        node = Node(
+            args.name,
+            port=args.port,
+            peers=peers_list,
+            tracker=args.tracker or "public",
+            identity=identity
+        )
         await node.connect()
-        await node.register(agents=["echo-cli"])
+        await node.register(agents=[args.name + "-agent"])
 
         @node.on_task
         async def handle(task):
@@ -131,7 +165,12 @@ def main() -> None:
     sub.add_parser("id", help="Apenas o node_id")
     sub.add_parser("pubkey", help="Chave pública em formatos úteis")
     sub.add_parser("init", help="Gerar e salvar identidade persistente")
-    sub.add_parser("serve", help="Iniciar um nó interativo (porta 7878)")
+    
+    serve_parser = sub.add_parser("serve", help="Iniciar um nó interativo")
+    serve_parser.add_argument("--name", default="elo-node", help="Nome do nó")
+    serve_parser.add_argument("--port", type=int, default=7878, help="Porta TCP")
+    serve_parser.add_argument("--peers", help="Peers iniciais separados por vírgula")
+    serve_parser.add_argument("--tracker", help="Tracker visibility ou tracker host")
 
     args = parser.parse_args()
 
@@ -140,10 +179,11 @@ def main() -> None:
         "id": cmd_id,
         "pubkey": cmd_pubkey,
         "init": cmd_init,
-        "serve": cmd_serve,
     }
 
-    if args.command in commands:
+    if args.command == "serve":
+        cmd_serve(args)
+    elif args.command in commands:
         commands[args.command]()
     else:
         parser.print_help()

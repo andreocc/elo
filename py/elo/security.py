@@ -12,7 +12,9 @@ import base64
 import json
 import os
 from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Any
+
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
@@ -95,25 +97,10 @@ def save_identity(
 
 def load_identity(
     key_dir: Path = DEFAULT_KEY_DIR,
-) -> tuple[ed25519.Ed25519PrivateKey, None]:
-    """Carrega a identidade do nó do disco.
+) -> EphemeralIdentity:
+    """Carrega a identidade do nó do disco."""
+    return EphemeralIdentity.from_file(key_dir)
 
-    Returns:
-        (private_key, None) — None mantido para compatibilidade de interface.
-    """
-    seed_path = key_dir / "identity.seed"
-    if not seed_path.exists():
-        raise FileNotFoundError(
-            f"Identidade não encontrada em {seed_path}. "
-            "Use elo.security.generate_and_save_identity() primeiro."
-        )
-
-    private_key: ed25519.Ed25519PrivateKey = serialization.load_pem_private_key(
-        seed_path.read_bytes(),
-        password=None,
-    )  # type: ignore[assignment]
-
-    return private_key, None
 
 
 def generate_and_save_identity(
@@ -176,11 +163,35 @@ def verify_signature(
 # ── Utilitário de identidade efêmera (sem disco) ───────────
 
 
+@dataclass
 class EphemeralIdentity:
     """Identidade temporária — útil para testes ou nós sem persistência."""
+    sensitive: bool = field(default=True, init=False)
 
     def __init__(self) -> None:
         self._private_key, self._public_key = generate_identity()
+        self.sensitive = True
+
+    @classmethod
+    def from_file(cls, key_dir: Path = DEFAULT_KEY_DIR) -> EphemeralIdentity:
+        """Carrega uma identidade do disco."""
+        seed_path = key_dir / "identity.seed"
+        if not seed_path.exists():
+            raise FileNotFoundError(
+                f"Identidade não encontrada em {seed_path}. "
+                "Use elo.security.generate_and_save_identity() primeiro."
+            )
+
+        private_key: ed25519.Ed25519PrivateKey = serialization.load_pem_private_key(
+            seed_path.read_bytes(),
+            password=None,
+        )  # type: ignore[assignment]
+
+        identity = cls.__new__(cls)
+        identity._private_key = private_key
+        identity._public_key = private_key.public_key()
+        identity.sensitive = True
+        return identity
 
     @property
     def node_id(self) -> str:

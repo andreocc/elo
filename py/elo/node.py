@@ -35,32 +35,38 @@ from elo.transport import (
     task_msg as p2p_task_msg,
     result_msg,
     MessageType,
+    DiscoveryManager,
 )
-from elo.security import EphemeralIdentity, load_identity, pubkey_to_id
+import os
+from elo.security import EphemeralIdentity
 from elo.types import Capabilities, Result, Task
+from elo.pending_queue import PendingQueue, PendingTask
 
 logger = logging.getLogger("elo")
 
 DEFAULT_DATA_DIR = Path.home() / ".elo"
 
 
-def _load_or_generate_identity() -> EphemeralIdentity:
-    """Carrega identidade persistente se existir, senão gera efêmera."""
-    seed_path = DEFAULT_DATA_DIR / "identity.seed"
-    if seed_path.exists():
-        try:
-            priv, _ = load_identity(DEFAULT_DATA_DIR)
-            pub = priv.public_key()
-            node_id = pubkey_to_id(pub)
-            logger.info("[elo] loaded persistent identity from %s", DEFAULT_DATA_DIR)
-            identity = EphemeralIdentity.__new__(EphemeralIdentity)
-            identity._private_key = priv
-            identity._public_key = pub
-            return identity
-        except Exception as e:
-            logger.warning("[elo] failed to load identity: %s — generating ephemeral", e)
-    logger.info("[elo] no persistent identity — generated ephemeral (use 'python -m elo init' to persist)")
-    return EphemeralIdentity()
+def save_last_peers(peers: list[str]) -> None:
+    try:
+        path = DEFAULT_DATA_DIR / "last_peer"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Store up to 10 unique peers
+        existing = load_last_peers()
+        combined = list(dict.fromkeys(peers + existing))[:10]
+        path.write_text("\n".join(combined), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def load_last_peers() -> list[str]:
+    try:
+        path = DEFAULT_DATA_DIR / "last_peer"
+        if path.exists():
+            return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except Exception:
+        pass
+    return []
 
 
 class Node:
@@ -93,15 +99,37 @@ class Node:
         self._verify_peers = verify_peers
 
         # Identidade
-        self._identity = identity or _load_or_generate_identity()
+        self._identity = identity or EphemeralIdentity()
         self._node_id = self._identity.node_id
+
+        # Fallback Queue
+        self._pending_queue = PendingQueue(self._node_id)
+        self._flushing_pending = False
+
+        # Reconnection State
+        self._reconnect_backoff: dict[str, int] = {}
+        self._reconnecting_peers: set[str] = set()
+
+        # Monitoring State
+        self._started_at = time.time()
+        self._last_heartbeat_received = 0.0
+
+        # Tracker host & visibility
+        tracker_host = os.environ.get("ELO_TRACKER_HOST", "tracker.elo.sh:7878")
+        visibility = "public"
+        if tracker in ("public", "private"):
+            visibility = tracker
+        else:
+            tracker_host = tracker
+            visibility = "public"
+        self._tracker_host = tracker_host
 
         # Transporte
         self._tcp = TCPManager(self._node_id, port=port)
 
         # Roteamento
         self._routing = InterestTable()
-        self._tracker = LocalTracker(visibility=tracker)
+        self._tracker = LocalTracker(visibility=visibility)
         if allowlist:
             for nid in allowlist:
                 self._tracker.allow_peer(nid)
@@ -172,22 +200,60 @@ class Node:
         self._port = actual_port
         self._tcp.on_message(self._handle_message)
 
-        # Conecta a peers manuais
-        hello = hello_msg(
+        # Build hello payload
+        hello = self._build_hello_msg()
+
+        # Start DiscoveryManager
+        self._discovery = DiscoveryManager(
             self._node_id,
-            self._tracker.get_public_caps(),
-            list(self._routing.local_interests),
-            self._tracker.visibility,
-            self._version,
+            actual_port,
+            self._on_discovered_peer
         )
-        for addr in self._initial_peers:
-            await self._tcp.connect_to_peer(addr, hello_payload=hello)
+        await self._discovery.start()
+
+        # Conecta a peers manuais
+        if self._initial_peers:
+            for addr in self._initial_peers:
+                await self._tcp.connect_to_peer(addr, hello_payload=hello)
+        else:
+            # Zero-Config Bootstrap
+            connected_to_tracker = False
+            if self._tracker_host:
+                try:
+                    logger.info("[node] attempting bootstrap with tracker: %s", self._tracker_host)
+                    res = await asyncio.wait_for(
+                        self._tcp.connect_to_peer(self._tracker_host, hello_payload=hello),
+                        timeout=5.0
+                    )
+                    if res:
+                        connected_to_tracker = True
+                        logger.info("[node] bootstrap connected to tracker: %s", self._tracker_host)
+                except Exception as e:
+                    logger.debug("[node] bootstrap tracker connection failed: %s", e)
+
+            if not connected_to_tracker:
+                last_peers = load_last_peers()
+                if last_peers:
+                    logger.info("[node] attempting bootstrap with cached last peers: %s", last_peers)
+                    for addr in last_peers:
+                        try:
+                            await asyncio.wait_for(
+                                self._tcp.connect_to_peer(addr, hello_payload=hello),
+                                timeout=3.0
+                            )
+                        except Exception as e:
+                            logger.debug("[node] failed to connect to cached peer %s: %s", addr, e)
+
+            # Send multicast announcement
+            await self._discovery.announce()
 
         logger.info("[elo] connected | node=%s id=%s port=%d",
                      self._name, self._node_id[:12], actual_port)
 
     async def disconnect(self) -> None:
         self._shutdown_event.set()
+        if hasattr(self, "_discovery") and self._discovery:
+            await self._discovery.stop()
         await self._tcp.stop()
         logger.info("[elo] disconnected | node=%s", self._name)
 
@@ -206,6 +272,9 @@ class Node:
         agent_caps = agent_details or [{"name": a} for a in (agents or [])]
         model_caps = model_details or [{"name": m} for m in (models or [])]
         tool_caps = tool_details or [{"name": t} for t in (tools or [])]
+
+        if not any(t.get("name") == "health" for t in tool_caps):
+            tool_caps.append({"name": "health", "description": "Built-in health check"})
 
         self._tracker.register(agents=agent_caps, models=model_caps, tools=tool_caps)
         self._routing.set_local_caps(self._tracker.caps)
@@ -230,7 +299,8 @@ class Node:
     # ── mensagens ──────────────────────────────────────────────
 
     async def send_task(self, target_node: str, capability: str,
-                        payload: dict[str, Any], *, ttl_s: int = 60) -> Result:
+                        payload: dict[str, Any], *, ttl_s: int = 60,
+                        _bypass_queue: bool = False) -> Result:
         """Envia task e aguarda resultado. Descobre peer se target vazio."""
         if not self.connected:
             raise RuntimeError("Node not connected")
@@ -242,6 +312,7 @@ class Node:
 
         # Tenta encontrar peer — matcha node_id contra addresses no formato "prefix@ip:port"
         peer = None
+        result = None
         if target_node:
             for addr in self._tcp.peer_addresses:
                 if addr.startswith(target_node[:12] + "@"):
@@ -251,7 +322,7 @@ class Node:
                 # Bug fix: target_node especificado mas offline —
                 # NÃO fazer find_peer_for(capability) que acharia o tracker.
                 # Vai direto pra relay-via-tracker.
-                return await self.send_task_via_tracker(
+                result = await self.send_task_via_tracker(
                     "", target_node, capability, payload, ttl_s=ttl_s
                 )
         else:
@@ -259,14 +330,21 @@ class Node:
             if not peer:
                 peer = await self._query_capability(capability, ttl=5, timeout=5)
 
-        if peer:
-            try:
-                await self._tcp.send_to(peer, task_dict)
-                return await self._wait_for_result(task_id, peer)
-            except Exception as e:
-                return Result.make_error(task_id, "SEND_ERROR", str(e))
+        if not result:
+            if peer:
+                try:
+                    await self._tcp.send_to(peer, task_dict)
+                    result = await self._wait_for_result(task_id, peer)
+                except Exception as e:
+                    result = Result.make_error(task_id, "SEND_ERROR", str(e))
+            else:
+                result = Result.make_error(task_id, "NO_PEER", f"No peer for: {capability}")
 
-        return Result.make_error(task_id, "NO_PEER", f"No peer for: {capability}")
+        if result.status == "error" and not _bypass_queue:
+            self._pending_queue.enqueue(task_id, target_node, capability, payload, ttl_s)
+            return Result.make_error(task_id, "QUEUED", "Target offline, task queued for retry")
+
+        return result
 
     async def send_task_async(self, target_node: str, capability: str,
                               payload: dict[str, Any]) -> str:
@@ -417,7 +495,14 @@ class Node:
         logger.info("[elo] running | node=%s (%s) port=%d peers=%d",
                      self._name, self._node_id[:12], self._port, self._tcp.peer_count)
 
-        await self._shutdown_event.wait()
+        # Run periodic tasks (e.g. flush pending fallback queue every 30s)
+        while not self._shutdown_event.is_set():
+            await self._flush_pending()
+            try:
+                await asyncio.wait_for(self._shutdown_event.wait(), timeout=30.0)
+            except asyncio.TimeoutError:
+                pass
+
         heartbeat_task.cancel()
 
     # ── message dispatcher ────────────────────────────────────
@@ -478,6 +563,8 @@ class Node:
             await self._on_task(peer_addr, msg)
         elif msg_type == MessageType.RESULT:
             await self._on_result(peer_addr, msg)
+        elif msg_type == MessageType.HEARTBEAT:
+            self._last_heartbeat_received = time.time()
 
     # ── protocol handlers ─────────────────────────────────────
 
@@ -503,6 +590,13 @@ class Node:
                 await self._tcp.send_to(peer_addr, ack)
             except Exception:
                 pass
+
+        # Save peer to last known peers cache
+        raw_addr = peer_addr.split("@")[-1] if "@" in peer_addr else peer_addr
+        if ":" in raw_addr:
+            save_last_peers([raw_addr])
+
+        asyncio.create_task(self._flush_pending())
 
     async def _on_query(self, peer_addr: str, msg: dict) -> None:
         capability = msg.get("capability", "")
@@ -598,7 +692,15 @@ class Node:
                        ttl_s=msg.get("ttl_s", 60),
                        signature=msg.get("signature", ""))
 
-            if self._task_handler:
+            if capability == "health":
+                result_payload = {
+                    "node_id": self._node_id,
+                    "peers_count": self._tcp.peer_count,
+                    "uptime_seconds": int(time.time() - self._started_at),
+                    "last_heartbeat": int(self._last_heartbeat_received),
+                    "version": self._version,
+                }
+            elif self._task_handler:
                 result_payload = await self._task_handler(task)
             else:
                 result_payload = {"message": "no handler registered"}
@@ -649,6 +751,9 @@ class Node:
 
     async def _on_bye(self, peer_addr: str, msg: dict) -> None:
         self._routing.remove_peer(peer_addr)
+        if self._is_outbound_target(peer_addr):
+            raw_addr = peer_addr.split("@")[-1] if "@" in peer_addr else peer_addr
+            asyncio.create_task(self._schedule_reconnect(raw_addr))
 
     # ── relay via tracker ───────────────────────────────────
 
@@ -735,6 +840,149 @@ class Node:
             return pubkey
         except Exception:
             return None
+
+    async def _flush_pending(self) -> None:
+        """Tenta reenviar todos os tasks pendentes."""
+        if self._flushing_pending:
+            return
+        self._flushing_pending = True
+
+        try:
+            tasks = self._pending_queue.load_all()
+            if not tasks:
+                return
+
+            now = time.time()
+            remaining = []
+            sent_any = False
+
+            for task in tasks:
+                # Expire after 10 minutes (600s)
+                if now - task.created_at > 600:
+                    logger.warning("[node] pending task %s expired (10min timeout)", task.task_id)
+                    continue
+
+                # Check if target node or capability has a peer available
+                peer = None
+                if task.target_node:
+                    for addr in self._tcp.peer_addresses:
+                        if addr.startswith(task.target_node[:12] + "@"):
+                            peer = addr
+                            break
+                else:
+                    peer = self._routing.find_peer_for(task.capability)
+
+                if peer or self._routing.find_peer_for("relay"):
+                    asyncio.create_task(self._retry_single_task(task))
+                    sent_any = True
+                else:
+                    task.retries += 1
+                    remaining.append(task)
+
+            if sent_any or len(remaining) != len(tasks):
+                self._pending_queue.save_all(remaining)
+
+        except Exception as e:
+            logger.debug("[node] error in flush pending: %s", e)
+        finally:
+            self._flushing_pending = False
+
+    async def _retry_single_task(self, task: PendingTask) -> None:
+        try:
+            result = await self.send_task(
+                task.target_node,
+                task.capability,
+                task.payload,
+                ttl_s=task.ttl_s,
+                _bypass_queue=True
+            )
+            if result.status == "error":
+                # If retry failed, put it back in queue if not expired
+                now = time.time()
+                if now - task.created_at <= 600:
+                    logger.info("[node] retry failed for task %s, re-queuing", task.task_id)
+                    tasks = self._pending_queue.load_all()
+                    if not any(t.task_id == task.task_id for t in tasks):
+                        task.retries += 1
+                        tasks.append(task)
+                        self._pending_queue.save_all(tasks)
+            else:
+                logger.info("[node] successfully sent pending task %s", task.task_id)
+        except Exception as e:
+            logger.debug("[node] error in retry single task: %s", e)
+
+    def _is_outbound_target(self, peer_addr: str) -> bool:
+        raw_addr = peer_addr.split("@")[-1] if "@" in peer_addr else peer_addr
+        if self._tracker_host and self._tracker_host == raw_addr:
+            return True
+        if raw_addr in self._initial_peers:
+            return True
+        return False
+
+    def _build_hello_msg(self) -> dict:
+        return hello_msg(
+            self._node_id,
+            self._tracker.get_public_caps(),
+            list(self._routing.local_interests),
+            self._tracker.visibility,
+            self._version,
+        )
+
+    async def _schedule_reconnect(self, addr: str) -> None:
+        if addr in self._reconnecting_peers:
+            return
+        self._reconnecting_peers.add(addr)
+
+        try:
+            while not self._shutdown_event.is_set():
+                # Check if already connected
+                is_connected = False
+                for c_addr in self._tcp.peer_addresses:
+                    raw_c_addr = c_addr.split("@")[-1] if "@" in c_addr else c_addr
+                    if raw_c_addr == addr:
+                        is_connected = True
+                        break
+
+                if is_connected:
+                    self._reconnect_backoff[addr] = 0
+                    break
+
+                attempts = self._reconnect_backoff.get(addr, 0)
+                delay = min(2 ** attempts, 30)
+                self._reconnect_backoff[addr] = attempts + 1
+
+                logger.info("[node] scheduling reconnect to %s in %ds (attempt %d)", addr, delay, attempts)
+
+                try:
+                    await asyncio.wait_for(self._shutdown_event.wait(), timeout=delay)
+                except asyncio.TimeoutError:
+                    pass
+
+                if self._shutdown_event.is_set():
+                    break
+
+                hello = self._build_hello_msg()
+                res = await self._tcp.connect_to_peer(addr, hello_payload=hello)
+                if res:
+                    logger.info("[node] successfully reconnected to %s", addr)
+                    self._reconnect_backoff[addr] = 0
+                    break
+        except Exception as e:
+            logger.debug("[node] error in reconnect for %s: %s", addr, e)
+        finally:
+            self._reconnecting_peers.discard(addr)
+
+    async def _on_discovered_peer(self, node_id: str, peer_addr: str) -> None:
+        for addr in self._tcp.peer_addresses:
+            if addr.endswith(peer_addr) or addr.startswith(node_id[:12] + "@"):
+                return
+
+        logger.info("[node] discovered peer on LAN: %s (%s)", peer_addr, node_id[:12])
+        hello = self._build_hello_msg()
+        try:
+            await self._tcp.connect_to_peer(peer_addr, hello_payload=hello)
+        except Exception as e:
+            logger.debug("[node] failed to connect to discovered peer %s: %s", peer_addr, e)
 
     # ── contexto ──────────────────────────────────────────────
 

@@ -106,16 +106,13 @@ class TestPersistedIdentity:
                 assert (seed_file.stat().st_mode & 0o777) == 0o600
 
             # Carrega
-            loaded_priv, loaded_x25519 = load_identity(key_dir)
-            assert loaded_priv is not None
-            loaded_pub = loaded_priv.public_key()
+            loaded_identity = load_identity(key_dir)
+            assert loaded_identity is not None
+            loaded_pub = loaded_identity.public_key
             assert pubkey_to_id(loaded_pub) == node_id
 
-            # X25519 já não é mais salvo — loaded_x25519 deve ser None
-            assert loaded_x25519 is None
-
             # Assina com a carregada, verifica com a original
-            sig = sign_message(loaded_priv, {"test": True})
+            sig = loaded_identity.sign({"test": True})
             assert verify_signature(pub, {"test": True}, sig)
 
     def test_load_missing_raises(self):

@@ -294,3 +294,74 @@ class TestNodeQueryResponse:
         assert peer.get("node_id") == "abc123", f"Expected node_id='abc123', got '{peer.get('node_id')}'"
 
         await node.disconnect()
+
+
+# ── TestPlugAndPlayFeatures ──────────────────────────────────
+
+class TestPlugAndPlayFeatures:
+    @pytest.mark.asyncio
+    async def test_identity_is_ephemeral_by_default(self):
+        node1 = Node("node-1", port=0)
+        node2 = Node("node-2", port=0)
+        assert node1.node_id != node2.node_id
+
+    @pytest.mark.asyncio
+    async def test_built_in_health_capability(self):
+        node = Node("node-health", port=0)
+        await node.connect()
+        # Mock receiving a task requesting "health"
+        task_id = "test-health-task"
+        task_msg_dict = {
+            "id": task_id,
+            "caller": "caller-1",
+            "capability": "health",
+            "payload": {},
+            "target": node.node_id,
+            "signature": "mock-sig"
+        }
+
+        # Spy on tcp send to capture the response
+        sent_messages = []
+        original_send = node._tcp.send_to
+        async def spy_send(addr, msg):
+            sent_messages.append(msg)
+        node._tcp.send_to = spy_send
+
+        # Disable signature verification for simplicity in test
+        node._verify_peers = False
+
+        try:
+            await node._on_task("caller-addr", task_msg_dict)
+        finally:
+            node._tcp.send_to = original_send
+
+        assert len(sent_messages) == 1
+        resp = sent_messages[0]
+        assert resp["status"] == "success"
+        payload = resp["payload"]
+        assert payload["node_id"] == node.node_id
+        assert "uptime_seconds" in payload
+        assert "peers_count" in payload
+        await node.disconnect()
+
+    @pytest.mark.asyncio
+    async def test_pending_queue_fallback(self):
+        node = Node("node-fallback", port=0)
+        await node.connect()
+        # Ensure queue starts empty (or clear it)
+        node._pending_queue.save_all([])
+
+        # Sending task to an offline destination should return QUEUED error
+        res = await node.send_task("offline-target-node-id", "echo", {"msg": "hello"})
+        assert res.status == "error"
+        assert res.error["code"] == "QUEUED"
+
+        # Verify it was enqueued in PendingQueue
+        tasks = node._pending_queue.load_all()
+        assert len(tasks) == 1
+        assert tasks[0].target_node == "offline-target-node-id"
+        assert tasks[0].capability == "echo"
+
+        # Clear queue for cleanup
+        node._pending_queue.save_all([])
+        await node.disconnect()
