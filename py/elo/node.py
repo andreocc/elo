@@ -788,6 +788,13 @@ class Node:
         task_dict["signature"] = self._identity.sign(task_dict)
 
         peer = tracker_node or self._routing.find_peer_for("relay")
+        # Bug fix: tracker_node vem como node_id puro, mas send_to precisa
+        # do formato completo "node_id@ip:port". Faz lookup nos peer_addresses.
+        if peer and "@" not in peer and peer != "":
+            for addr in self._tcp.peer_addresses:
+                if addr.startswith(peer[:12] + "@"):
+                    peer = addr
+                    break
         if peer:
             try:
                 await self._tcp.send_to(peer, task_dict)
